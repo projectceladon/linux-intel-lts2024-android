@@ -16,6 +16,7 @@
 #include <linux/remoteproc.h>
 #include <linux/slab.h>
 
+#include <linux/panic_notifier.h>
 #include <linux/platform_device.h>
 #include <linux/trusty/smcall.h>
 #include <linux/trusty/trusty.h>
