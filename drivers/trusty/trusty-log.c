@@ -14,6 +14,7 @@
 #include <linux/moduleparam.h>
 #include <linux/log2.h>
 #include <linux/miscdevice.h>
+#include <linux/panic_notifier.h>
 #include <linux/poll.h>
 #include <linux/seq_file.h>
 #include <asm/page.h>

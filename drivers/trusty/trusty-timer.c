@@ -19,6 +19,7 @@
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
 #include <linux/of_platform.h>
 #endif
+#include <linux/panic_notifier.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/trusty/smcall.h>
