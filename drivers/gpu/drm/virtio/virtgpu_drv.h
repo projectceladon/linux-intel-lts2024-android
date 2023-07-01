@@ -231,6 +231,11 @@ struct virtio_gpu_drv_cap_cache {
 	atomic_t is_valid;
 };
 
+struct virtio_gpu_vblank {
+	struct virtio_gpu_queue vblank;
+	uint32_t buf[4];
+};
+
 struct virtio_gpu_device {
 	struct drm_device *ddev;
 
@@ -238,9 +243,10 @@ struct virtio_gpu_device {
 
 	struct virtio_gpu_output outputs[VIRTIO_GPU_MAX_SCANOUTS];
 	uint32_t num_scanouts;
-
+	uint32_t num_vblankq;
 	struct virtio_gpu_queue ctrlq;
 	struct virtio_gpu_queue cursorq;
+
 	struct kmem_cache *vbufs;
 
 	atomic_t pending_commands;
@@ -260,6 +266,7 @@ struct virtio_gpu_device {
 	bool has_edid;
 	bool has_modifier;
 	bool has_scaling;
+	bool has_vblank;
 	bool has_indirect;
 	bool has_resource_assign_uuid;
 	bool has_resource_blob;
@@ -284,6 +291,7 @@ struct virtio_gpu_device {
 	spinlock_t resource_export_lock;
 	/* protects map state and host_visible_mm */
 	spinlock_t host_visible_lock;
+	struct virtio_gpu_vblank vblank[];
 };
 
 struct virtio_gpu_fpriv {
