@@ -38,6 +38,7 @@
 #include <drm/drm_drv.h>
 #include <drm/drm_fbdev_shmem.h>
 #include <drm/drm_file.h>
+#include <drm/drm_vblank.h>
 
 #include "virtgpu_drv.h"
 
@@ -71,6 +72,7 @@ static int virtio_gpu_probe(struct virtio_device *vdev)
 {
 	struct drm_device *dev;
 	int ret;
+	struct virtio_gpu_device *pgpudev;
 
 	if (drm_firmware_drivers_only() && virtio_gpu_modeset == -1)
 		return -EINVAL;
@@ -99,6 +101,15 @@ static int virtio_gpu_probe(struct virtio_device *vdev)
 	ret = virtio_gpu_init(vdev, dev);
 	if (ret)
 		goto err_free;
+
+	pgpudev = dev->dev_private;
+	if(pgpudev->num_vblankq) {
+		ret = drm_vblank_init(dev, pgpudev->num_vblankq);
+		if (ret) {
+			DRM_ERROR("could not init vblank\n");
+			goto err_deinit;
+		}
+	}
 
 	ret = drm_dev_register(dev, 0);
 	if (ret)
