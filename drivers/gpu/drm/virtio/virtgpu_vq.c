@@ -31,8 +31,10 @@
 #include <linux/virtio_config.h>
 #include <linux/virtio_ring.h>
 
+#include <drm/drm.h>
 #include <drm/drm_edid.h>
 
+#include <drm/drm_vblank.h>
 #include "virtgpu_drv.h"
 #include "virtgpu_trace.h"
 
@@ -59,6 +61,60 @@ void virtio_gpu_ctrl_ack(struct virtqueue *vq)
 	struct virtio_gpu_device *vgdev = dev->dev_private;
 
 	schedule_work(&vgdev->ctrlq.dequeue_work);
+}
+
+static void virtgpu_irqqueue_buf(struct virtqueue *vq,
+				  uint32_t *evtbuf)
+{
+	struct scatterlist sg[1];
+	sg_init_one(sg, evtbuf, sizeof(*evtbuf));
+	virtqueue_add_inbuf(vq, sg, 1, evtbuf, GFP_ATOMIC);
+}
+
+void virtio_gpu_vblank_poll_arm(struct virtqueue *vq)
+{
+	struct drm_device *dev = vq->vdev->priv;
+	struct virtio_gpu_device *vgdev = dev->dev_private;
+	unsigned long irqflags;
+	unsigned int len;
+	unsigned int *ret_value;
+	int target = 0;
+
+	while((target < vgdev->num_vblankq) && (vgdev->vblank[target].vblank.vq != vq)) {
+		target++;
+	}
+
+	spin_lock_irqsave(&vgdev->vblank[target].vblank.qlock, irqflags);
+	if((ret_value = virtqueue_get_buf(vq, &len)) != NULL) {
+
+		virtgpu_irqqueue_buf(vq, ret_value);
+	}
+	virtqueue_kick(vq);
+	spin_unlock_irqrestore(&vgdev->vblank[target].vblank.qlock, irqflags);
+}
+
+void virtio_gpu_vblank_ack(struct virtqueue *vq)
+{
+	struct drm_device *dev = vq->vdev->priv;
+	struct virtio_gpu_device *vgdev = dev->dev_private;
+	unsigned long irqflags;
+	unsigned int len;
+	unsigned int *ret_value;
+	int target = 0;
+
+	while((target < vgdev->num_vblankq) && (vgdev->vblank[target].vblank.vq != vq)) {
+		target++;
+	}
+
+	spin_lock_irqsave(&vgdev->vblank[target].vblank.qlock, irqflags);
+	if((ret_value = virtqueue_get_buf(vgdev->vblank[target].vblank.vq, &len)) != NULL) {
+
+		virtgpu_irqqueue_buf(vgdev->vblank[target].vblank.vq, ret_value);
+	}
+
+	spin_unlock_irqrestore(&vgdev->vblank[target].vblank.qlock, irqflags);
+	drm_handle_vblank(dev, target);
+
 }
 
 void virtio_gpu_cursor_ack(struct virtqueue *vq)
@@ -420,6 +476,29 @@ static int virtio_gpu_queue_fenced_ctrl_buffer(struct virtio_gpu_device *vgdev,
 		kfree(sgt);
 	}
 	return ret;
+}
+
+
+
+void virtio_gpu_vblankq_notify(struct virtio_gpu_device *vgdev)
+{
+	int size,i;
+
+	for(i=0; i < vgdev->num_vblankq; i++) {
+		spin_lock(&vgdev->vblank[i].vblank.qlock);
+
+		size = virtqueue_get_vring_size(vgdev->vblank[i].vblank.vq);
+		if (size > ARRAY_SIZE(vgdev->vblank[i].buf))
+			size = ARRAY_SIZE(vgdev->vblank[i].buf);
+
+		virtgpu_irqqueue_buf(vgdev->vblank[i].vblank.vq, &vgdev->vblank[i].buf[0]);
+
+		virtqueue_kick(vgdev->vblank[i].vblank.vq);
+
+		spin_unlock(&vgdev->vblank[i].vblank.qlock);
+
+	}
+
 }
 
 void virtio_gpu_notify(struct virtio_gpu_device *vgdev)

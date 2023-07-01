@@ -32,6 +32,7 @@
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_simple_kms_helper.h>
+#include <drm/drm_vblank.h>
 
 #include "virtgpu_drv.h"
 
@@ -47,6 +48,28 @@
 #define drm_connector_to_virtio_gpu_output(x) \
 	container_of(x, struct virtio_gpu_output, conn)
 
+static int virtio_irq_enable_vblank(struct drm_crtc *crtc)
+{
+
+	struct drm_device *dev = crtc->dev;
+	struct virtio_gpu_device *vgdev = dev->dev_private;
+	struct virtio_gpu_output *output = drm_crtc_to_virtio_gpu_output(crtc);
+
+	virtio_gpu_vblank_poll_arm(vgdev->vblank[output->index].vblank.vq);
+	virtqueue_enable_cb(vgdev->vblank[output->index].vblank.vq);
+	return 0;
+}
+
+static void virtio_irq_disable_vblank(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct virtio_gpu_device *vgdev;
+	vgdev = dev->dev_private;
+	struct virtio_gpu_output *output = drm_crtc_to_virtio_gpu_output(crtc);
+
+	virtqueue_disable_cb(vgdev->vblank[output->index].vblank.vq);
+}
+
 static const struct drm_crtc_funcs virtio_gpu_crtc_funcs = {
 	.set_config             = drm_atomic_helper_set_config,
 	.destroy                = drm_crtc_cleanup,
@@ -55,6 +78,8 @@ static const struct drm_crtc_funcs virtio_gpu_crtc_funcs = {
 	.reset                  = drm_atomic_helper_crtc_reset,
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state   = drm_atomic_helper_crtc_destroy_state,
+	.enable_vblank = virtio_irq_enable_vblank,
+	.disable_vblank = virtio_irq_disable_vblank,
 };
 
 static const struct drm_framebuffer_funcs virtio_gpu_fb_funcs = {
@@ -123,6 +148,17 @@ static void virtio_gpu_crtc_atomic_flush(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state,
 									  crtc);
 	struct virtio_gpu_output *output = drm_crtc_to_virtio_gpu_output(crtc);
+	struct drm_device *drm = crtc->dev;
+
+	spin_lock_irq(&drm->event_lock);
+
+
+	if (crtc->state->event) {
+		drm_crtc_send_vblank_event(crtc, crtc->state->event);
+		crtc->state->event = NULL;
+	}
+
+	spin_unlock_irq(&drm->event_lock);
 
 	/*
 	 * virtio-gpu can't do modeset and plane update operations
