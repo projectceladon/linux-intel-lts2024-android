@@ -478,6 +478,12 @@ bool virtio_gpu_is_shmem(struct virtio_gpu_object *bo);
 int virtio_gpu_resource_id_get(struct virtio_gpu_device *vgdev,
 			       uint32_t *resid);
 
+void virtio_gpu_resource_id_put(struct virtio_gpu_device *vgdev, uint32_t id);
+
+void virtio_gpu_object_save_restore_list(struct virtio_gpu_device *vgdev,
+					 struct virtio_gpu_object *bo,
+					 struct virtio_gpu_object_params *params);
+
 int virtio_gpu_object_restore_all(struct virtio_gpu_device *vgdev);
 
 /* virtgpu_prime.c */
