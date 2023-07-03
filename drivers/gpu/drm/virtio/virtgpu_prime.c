@@ -162,9 +162,92 @@ struct drm_gem_object *virtgpu_gem_prime_import(struct drm_device *dev,
 	return drm_gem_prime_import(dev, buf);
 }
 
+static int virtio_gpu_sgt_to_mem_entry(struct virtio_gpu_device *vgdev,
+				       struct sg_table *table,
+				       struct virtio_gpu_mem_entry **ents,
+				       unsigned int *nents)
+{
+	struct scatterlist *sg;
+	int si;
+
+	bool use_dma_api = !virtio_has_dma_quirk(vgdev->vdev);
+	if (use_dma_api)
+		*nents = table->nents;
+	else
+		*nents = table->orig_nents;
+
+	*ents = kvmalloc_array(*nents,
+			       sizeof(struct virtio_gpu_mem_entry),
+			       GFP_KERNEL);
+	if (!(*ents)) {
+		DRM_ERROR("failed to allocate ent list\n");
+		return -ENOMEM;
+	}
+
+	if (use_dma_api) {
+		for_each_sgtable_dma_sg(table, sg, si) {
+			(*ents)[si].addr = cpu_to_le64(sg_dma_address(sg));
+			(*ents)[si].length = cpu_to_le32(sg_dma_len(sg));
+			(*ents)[si].padding = 0;
+		}
+	} else {
+		for_each_sgtable_sg(table, sg, si) {
+			(*ents)[si].addr = cpu_to_le64(sg_phys(sg));
+			(*ents)[si].length = cpu_to_le32(sg->length);
+			(*ents)[si].padding = 0;
+		}
+	}
+
+	return 0;
+
+}
+
 struct drm_gem_object *virtgpu_gem_prime_import_sg_table(
 	struct drm_device *dev, struct dma_buf_attachment *attach,
 	struct sg_table *table)
 {
-	return ERR_PTR(-ENODEV);
+	size_t size = PAGE_ALIGN(attach->dmabuf->size);
+	struct virtio_gpu_device *vgdev = dev->dev_private;
+	struct virtio_gpu_object_params params = { 0 };
+	struct virtio_gpu_object *bo;
+	struct drm_gem_object *obj;
+	struct virtio_gpu_mem_entry *ents;
+	unsigned int nents;
+	int ret;
+
+	if (!vgdev->has_resource_blob || vgdev->has_virgl_3d) {
+		return ERR_PTR(-ENODEV);
+	}
+
+	obj = drm_gem_shmem_prime_import_sg_table(dev, attach, table);
+	if (IS_ERR(obj)) {
+		return ERR_CAST(obj);
+	}
+
+	bo = gem_to_virtio_gpu_obj(obj);
+	ret = virtio_gpu_resource_id_get(vgdev, &bo->hw_res_handle);
+	if (ret < 0) {
+		return ERR_PTR(ret);
+	}
+
+	ret = virtio_gpu_sgt_to_mem_entry(vgdev, table, &ents, &nents);
+	if (ret != 0) {
+		goto err_put_id;
+	}
+
+	bo->guest_blob = true;
+	params.blob_mem = VIRTGPU_BLOB_MEM_GUEST;
+	params.blob_flags = VIRTGPU_BLOB_FLAG_USE_SHAREABLE;
+	params.blob = true;
+	params.size = size;
+
+	virtio_gpu_cmd_resource_create_blob(vgdev, bo, &params,
+					    ents, nents);
+	virtio_gpu_object_save_restore_list(vgdev, bo, &params);
+
+	return obj;
+
+err_put_id:
+	virtio_gpu_resource_id_put(vgdev, bo->hw_res_handle);
+	return ERR_PTR(ret);
 }
