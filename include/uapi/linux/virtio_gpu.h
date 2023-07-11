@@ -68,6 +68,11 @@
  *VIRTIO_GPU_CMD_SET_MODIFIER
  */
 #define VIRTIO_GPU_F_MODIFIER            5
+/*
+*VIRTIO_GPU_CMD_SET_SCALING
+*/
+#define VIRTIO_GPU_F_SCALING	6
+
 
 enum virtio_gpu_ctrl_type {
 	VIRTIO_GPU_UNDEFINED = 0,
@@ -88,6 +93,7 @@ enum virtio_gpu_ctrl_type {
 	VIRTIO_GPU_CMD_RESOURCE_CREATE_BLOB,
 	VIRTIO_GPU_CMD_SET_SCANOUT_BLOB,
 	VIRTIO_GPU_CMD_SET_MODIFIER,
+	VIRTIO_GPU_CMD_SET_SCALING,
 
 	/* 3d commands */
 	VIRTIO_GPU_CMD_CTX_CREATE = 0x0200,
@@ -205,6 +211,14 @@ struct virtio_gpu_resource_flush {
 	struct virtio_gpu_ctrl_hdr hdr;
 	struct virtio_gpu_rect r;
 	__le32 resource_id;
+	__le32 padding;
+};
+
+/* VIRTIO_GPU_CMD_SET_SCALING */
+struct virtio_gpu_set_scaling {
+	struct virtio_gpu_ctrl_hdr hdr;
+	struct virtio_gpu_rect dst;
+	__le32 scanout_id;
 	__le32 padding;
 };
 
