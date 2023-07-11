@@ -145,9 +145,13 @@ static int virtio_gpu_plane_atomic_check(struct drm_plane *plane,
 										 plane);
 	struct drm_plane_state *old_plane_state = drm_atomic_get_old_plane_state(state,
 										 plane);
+	struct drm_device *dev = plane->dev;
+	struct virtio_gpu_device *vgdev = dev->dev_private;
 	bool is_cursor = plane->type == DRM_PLANE_TYPE_CURSOR;
 	struct drm_crtc_state *crtc_state;
 	int ret;
+	int min_scale = DRM_PLANE_NO_SCALING;
+	int max_scale = DRM_PLANE_NO_SCALING;
 
 	if (!new_plane_state->fb || WARN_ON(!new_plane_state->crtc))
 		return 0;
@@ -165,9 +169,13 @@ static int virtio_gpu_plane_atomic_check(struct drm_plane *plane,
 	if (IS_ERR(crtc_state))
                 return PTR_ERR(crtc_state);
 
+	if(vgdev->has_scaling && (new_plane_state->fb->format->format != DRM_FORMAT_C8)) {
+		min_scale = 1;
+		max_scale = 0x30000-1;
+	}
 	ret = drm_atomic_helper_check_plane_state(new_plane_state, crtc_state,
-						  DRM_PLANE_NO_SCALING,
-						  DRM_PLANE_NO_SCALING,
+						  min_scale,
+						  max_scale,
 						  is_cursor, true);
 	return ret;
 }
@@ -299,6 +307,17 @@ static void virtio_gpu_primary_plane_update(struct drm_plane *plane,
 						   plane->state->src_x >> 16,
 						   plane->state->src_y >> 16);
 		}
+	}
+
+	if(vgdev->has_scaling) {
+		struct drm_rect rect_dst;
+
+		rect_dst.x1 = plane->state->crtc_x;
+		rect_dst.y1 = plane->state->crtc_y;
+		rect_dst.x2 = plane->state->crtc_w;
+		rect_dst.y2 = plane->state->crtc_h;
+
+		virtio_gpu_cmd_set_scaling(vgdev, output->index, &rect_dst);
 	}
 
 	virtio_gpu_resource_flush(plane,
