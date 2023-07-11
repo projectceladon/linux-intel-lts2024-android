@@ -1317,3 +1317,23 @@ void virtio_gpu_cmd_set_modifier(struct virtio_gpu_device *vgdev,
 	cmd_p->scanout_id = cpu_to_le32(scanout_id);
 	virtio_gpu_queue_ctrl_buffer(vgdev, vbuf);
 }
+
+void virtio_gpu_cmd_set_scaling(struct virtio_gpu_device *vgdev,
+				     uint32_t scanout_id,
+				     struct drm_rect *rect_dst)
+{
+	struct virtio_gpu_set_scaling *cmd_p;
+	struct virtio_gpu_vbuffer *vbuf;
+
+	cmd_p = virtio_gpu_alloc_cmd(vgdev, &vbuf, sizeof(*cmd_p));
+	memset(cmd_p, 0, sizeof(*cmd_p));
+	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_SCALING);
+	cmd_p->scanout_id = cpu_to_le32(scanout_id);
+
+	cmd_p->dst.width = cpu_to_le32(rect_dst->x2);
+	cmd_p->dst.height = cpu_to_le32(rect_dst->y2);
+	cmd_p->dst.x = cpu_to_le32(rect_dst->x1);
+	cmd_p->dst.y = cpu_to_le32(rect_dst->y1);
+
+	virtio_gpu_queue_ctrl_buffer(vgdev, vbuf);
+}
