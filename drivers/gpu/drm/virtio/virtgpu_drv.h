@@ -258,6 +258,7 @@ struct virtio_gpu_device {
 	bool has_virgl_3d;
 	bool has_edid;
 	bool has_modifier;
+	bool has_scaling;
 	bool has_indirect;
 	bool has_resource_assign_uuid;
 	bool has_resource_blob;
@@ -444,6 +445,11 @@ virtio_gpu_cmd_set_scanout_blob(struct virtio_gpu_device *vgdev,
 void virtio_gpu_cmd_set_modifier(struct virtio_gpu_device *vgdev,
 				 uint32_t scanout_id,
 				 struct drm_framebuffer *fb);
+
+void virtio_gpu_cmd_set_scaling(struct virtio_gpu_device *vgdev,
+				     uint32_t scanout_id,
+				     struct drm_rect *rect_dst);
+
 /* virtgpu_display.c */
 int virtio_gpu_modeset_init(struct virtio_gpu_device *vgdev);
 void virtio_gpu_modeset_fini(struct virtio_gpu_device *vgdev);
