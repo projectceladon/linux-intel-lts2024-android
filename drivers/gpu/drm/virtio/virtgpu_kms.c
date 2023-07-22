@@ -187,6 +187,9 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 	}
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_RESOURCE_BLOB)) {
 		vgdev->has_resource_blob = true;
+		if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MODIFIER)) {
+			vgdev->has_modifier = true;
+		}
 	}
 	if (virtio_get_shm_region(vgdev->vdev, &vgdev->host_visible_region,
 				  VIRTIO_GPU_SHM_ID_HOST_VISIBLE)) {

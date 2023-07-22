@@ -64,6 +64,10 @@
  * context_init and multiple timelines
  */
 #define VIRTIO_GPU_F_CONTEXT_INIT        4
+/*
+ *VIRTIO_GPU_CMD_SET_MODIFIER
+ */
+#define VIRTIO_GPU_F_MODIFIER            5
 
 enum virtio_gpu_ctrl_type {
 	VIRTIO_GPU_UNDEFINED = 0,
@@ -83,6 +87,7 @@ enum virtio_gpu_ctrl_type {
 	VIRTIO_GPU_CMD_RESOURCE_ASSIGN_UUID,
 	VIRTIO_GPU_CMD_RESOURCE_CREATE_BLOB,
 	VIRTIO_GPU_CMD_SET_SCANOUT_BLOB,
+	VIRTIO_GPU_CMD_SET_MODIFIER,
 
 	/* 3d commands */
 	VIRTIO_GPU_CMD_CTX_CREATE = 0x0200,
@@ -427,6 +432,13 @@ struct virtio_gpu_set_scanout_blob {
 	__le32 padding;
 	__le32 strides[4];
 	__le32 offsets[4];
+};
+/* VIRTIO_GPU_CMD_SET_MODIFIER */
+struct virtio_gpu_set_modifier {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le64 modifier;
+	__le32 scanout_id;
+	__le32 padding;
 };
 
 /* VIRTIO_GPU_CMD_RESOURCE_MAP_BLOB */
