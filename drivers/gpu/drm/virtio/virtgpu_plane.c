@@ -130,7 +130,7 @@ drm_plane_state *virtio_gpu_plane_duplicate_state(struct drm_plane *plane)
 	return &new->base;
 }
 
-static const struct drm_plane_funcs virtio_gpu_plane_funcs = {
+static struct drm_plane_funcs virtio_gpu_plane_funcs = {
 	.update_plane		= drm_atomic_helper_update_plane,
 	.disable_plane		= drm_atomic_helper_disable_plane,
 	.reset			= drm_atomic_helper_plane_reset,
@@ -288,6 +288,9 @@ static void virtio_gpu_primary_plane_update(struct drm_plane *plane,
 						 plane->state->src_h >> 16,
 						 plane->state->src_x >> 16,
 						 plane->state->src_y >> 16);
+			if (vgdev->has_modifier)
+				virtio_gpu_cmd_set_modifier(vgdev, output->index, plane->state->fb);
+
 		} else {
 			virtio_gpu_cmd_set_scanout(vgdev, output->index,
 						   bo->hw_res_handle,
@@ -443,6 +446,27 @@ static const struct drm_plane_helper_funcs virtio_gpu_cursor_helper_funcs = {
 	.atomic_update		= virtio_gpu_cursor_plane_update,
 };
 
+static const uint64_t virtio_gpu_format_modifiers[] = {
+	DRM_FORMAT_MOD_LINEAR,
+	I915_FORMAT_MOD_X_TILED,
+	I915_FORMAT_MOD_Y_TILED,
+	DRM_FORMAT_MOD_INVALID
+};
+
+
+static bool virtio_gpu_plane_format_mod_supported(struct drm_plane *_plane,
+						  u32 format, u64 modifier)
+{
+	switch (modifier) {
+	case DRM_FORMAT_MOD_LINEAR:
+	case I915_FORMAT_MOD_X_TILED:
+	case I915_FORMAT_MOD_Y_TILED:
+		return true;
+	default:
+		return false;
+        }
+}
+
 struct drm_plane *virtio_gpu_plane_init(struct virtio_gpu_device *vgdev,
 					enum drm_plane_type type,
 					int index)
@@ -463,9 +487,18 @@ struct drm_plane *virtio_gpu_plane_init(struct virtio_gpu_device *vgdev,
 		funcs = &virtio_gpu_primary_helper_funcs;
 	}
 
-	plane = drmm_universal_plane_alloc(dev, struct drm_plane, dev,
-					   1 << index, &virtio_gpu_plane_funcs,
-					   formats, nformats, NULL, type, NULL);
+	if (vgdev->has_modifier) {
+		const uint64_t *modifiers = virtio_gpu_format_modifiers;
+		virtio_gpu_plane_funcs.format_mod_supported = virtio_gpu_plane_format_mod_supported;
+		plane = drmm_universal_plane_alloc(dev, struct drm_plane, dev,
+						   1 << index, &virtio_gpu_plane_funcs,
+						   formats, nformats, modifiers, type, NULL);
+	} else {
+		plane = drmm_universal_plane_alloc(dev, struct drm_plane, dev,
+						   1 << index, &virtio_gpu_plane_funcs,
+						   formats, nformats, NULL, type, NULL);
+	}
+
 	if (IS_ERR(plane))
 		return plane;
 
