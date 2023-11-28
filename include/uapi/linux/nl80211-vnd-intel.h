@@ -51,6 +51,8 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO			= 0x2d,
 	IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP			= 0x30,
 	IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT		= 0x32,
+	IWL_MVM_VENDOR_CMD_GET_FW_VERSION                       = 0x33,
+	IWL_MVM_VENDOR_CMD_GET_DRV_VERSION                      = 0x34,
 };
 
 enum iwl_vendor_auth_akm_mode {
@@ -81,6 +83,8 @@ enum iwl_vendor_auth_akm_mode {
  *	collocated AP. Relevant for 6GHz AP info.
  * @IWL_MVM_VENDOR_ATTR_COLLOC_ADDR: MAC address of a collocated AP.
  *	Relevant for 6GHz AP info.
+ * @IWL_MVM_VENDOR_ATTR_DRV_VER: string attribute
+ * @IWL_MVM_VENDOR_ATTR_FW_VER: string attribute
  *
  * @NUM_IWL_MVM_VENDOR_ATTR: number of vendor attributes
  * @MAX_IWL_MVM_VENDOR_ATTR: highest vendor attribute number
@@ -98,6 +102,8 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_BAND				= 0x69,
 	IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL			= 0x70,
 	IWL_MVM_VENDOR_ATTR_COLLOC_ADDR				= 0x71,
+	IWL_MVM_VENDOR_ATTR_FW_VER                              = 0x72,
+	IWL_MVM_VENDOR_ATTR_DRV_VER                             = 0x73,
 
 	NUM_IWL_MVM_VENDOR_ATTR,
 	MAX_IWL_MVM_VENDOR_ATTR = NUM_IWL_MVM_VENDOR_ATTR - 1,

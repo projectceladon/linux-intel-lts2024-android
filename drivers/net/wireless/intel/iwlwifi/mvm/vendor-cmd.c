@@ -16,6 +16,8 @@ iwl_mvm_vendor_attr_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 	[IWL_MVM_VENDOR_ATTR_BAND] = { .type = NLA_U8 },
 	[IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL] = { .type = NLA_U8 },
 	[IWL_MVM_VENDOR_ATTR_COLLOC_ADDR] = { .type = NLA_BINARY, .len = ETH_ALEN },
+	[IWL_MVM_VENDOR_ATTR_FW_VER] = { .type = NLA_STRING, .len = 50 },
+	[IWL_MVM_VENDOR_ATTR_DRV_VER] = { .type = NLA_STRING, .len = 50 },
 };
 
 static int iwl_mvm_vendor_get_csme_conn_info(struct wiphy *wiphy,
@@ -80,6 +82,49 @@ static int iwl_mvm_vendor_host_get_ownership(struct wiphy *wiphy,
 	return ret;
 }
 
+static int iwl_mvm_vendor_get_fw_version(struct wiphy *wiphy,
+					 struct wireless_dev *wdev,
+					 const void *data, int data_len)
+{
+	int err = 0;
+	struct sk_buff *skb;
+	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	const struct iwl_fw *fw = mvm->fw;
+
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, sizeof(fw->fw_version));
+	if (!skb)
+		return -ENOMEM;
+	if (nla_put_string(skb, IWL_MVM_VENDOR_ATTR_FW_VER, fw->fw_version)) {
+		kfree_skb(skb);
+		return -ENOBUFS;
+	}
+
+	return cfg80211_vendor_cmd_reply(skb);
+}
+
+static int iwl_mvm_vendor_get_drv_version(struct wiphy *wiphy,
+					  struct wireless_dev *wdev,
+					  const void *data, int data_len)
+{
+	int err = 0;
+	struct sk_buff *skb;
+	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	const struct iwl_fw *fw = mvm->fw;
+
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, sizeof(utsname()->release));
+	if (!skb)
+		return -ENOMEM;
+	if (nla_put_string(skb, IWL_MVM_VENDOR_ATTR_DRV_VER, utsname()->release)) {
+		kfree_skb(skb);
+		return -ENOBUFS;
+	}
+
+	return cfg80211_vendor_cmd_reply(skb);
+}
+
+
 static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 	{
 		.info = {
@@ -98,6 +143,28 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		},
 		.doit = iwl_mvm_vendor_host_get_ownership,
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
+	},
+	{
+		.info = {
+			.vendor_id = INTEL_OUI,
+			.subcmd = IWL_MVM_VENDOR_CMD_GET_FW_VERSION,
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			 WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = iwl_mvm_vendor_get_fw_version,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
+	},
+	{
+		.info = {
+			.vendor_id = INTEL_OUI,
+			.subcmd = IWL_MVM_VENDOR_CMD_GET_DRV_VERSION,
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			 WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = iwl_mvm_vendor_get_drv_version,
 		.policy = iwl_mvm_vendor_attr_policy,
 		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
