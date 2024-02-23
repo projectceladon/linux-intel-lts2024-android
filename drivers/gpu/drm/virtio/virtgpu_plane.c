@@ -465,6 +465,7 @@ static const uint64_t virtio_gpu_format_modifiers[] = {
 	DRM_FORMAT_MOD_LINEAR,
 	I915_FORMAT_MOD_X_TILED,
 	I915_FORMAT_MOD_Y_TILED,
+	I915_FORMAT_MOD_4_TILED,
 	DRM_FORMAT_MOD_INVALID
 };
 
@@ -476,6 +477,7 @@ static bool virtio_gpu_plane_format_mod_supported(struct drm_plane *_plane,
 	case DRM_FORMAT_MOD_LINEAR:
 	case I915_FORMAT_MOD_X_TILED:
 	case I915_FORMAT_MOD_Y_TILED:
+	case I915_FORMAT_MOD_4_TILED:
 		return true;
 	default:
 		return false;
