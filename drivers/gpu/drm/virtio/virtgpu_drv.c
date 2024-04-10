@@ -178,6 +178,7 @@ static int virtgpu_freeze(struct virtio_device *vdev)
 		return error;
 	}
 
+	vdev->config->reset(vdev);
 	flush_work(&vgdev->obj_free_work);
 	flush_work(&vgdev->ctrlq.dequeue_work);
 	flush_work(&vgdev->cursorq.dequeue_work);
@@ -191,7 +192,7 @@ static int virtgpu_restore(struct virtio_device *vdev)
 {
 	struct drm_device *dev = vdev->priv;
 	struct virtio_gpu_device *vgdev = dev->dev_private;
-	int error;
+	int error, i;
 
 	error = virtio_gpu_find_vqs(vgdev);
 	if (error) {
@@ -200,6 +201,15 @@ static int virtgpu_restore(struct virtio_device *vdev)
 	}
 
 	virtio_device_ready(vdev);
+
+
+	if(vgdev->has_vblank) {
+		virtio_gpu_vblankq_notify(vgdev);
+
+		for(i = 0; i < vgdev->num_vblankq; i++)
+			virtqueue_disable_cb(vgdev->vblank[i].vblank.vq);
+	}
+
 
 	error = virtio_gpu_object_restore_all(vgdev);
 	if (error) {
