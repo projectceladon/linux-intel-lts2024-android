@@ -2473,16 +2473,8 @@ void iwl_mvm_enter_ctkill(struct iwl_mvm *mvm);
 int iwl_mvm_send_temp_report_ths_cmd(struct iwl_mvm *mvm);
 int iwl_mvm_ctdp_command(struct iwl_mvm *mvm, u32 op, u32 budget);
 
-#if IS_ENABLED(CONFIG_IWLMEI)
-
 /* vendor commands */
 void iwl_mvm_vendor_cmds_register(struct iwl_mvm *mvm);
-
-#else
-
-static inline void iwl_mvm_vendor_cmds_register(struct iwl_mvm *mvm) {}
-
-#endif
 
 /* Location Aware Regulatory */
 struct iwl_mcc_update_resp_v8 *
