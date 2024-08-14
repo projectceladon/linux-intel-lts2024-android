@@ -31,7 +31,7 @@
 
 #include "virtgpu_drv.h"
 
-static const uint32_t virtio_gpu_formats[] = {
+static uint32_t virtio_gpu_formats[] = {
 	DRM_FORMAT_XRGB8888,
 	DRM_FORMAT_ARGB8888,
 	DRM_FORMAT_BGRX8888,
@@ -114,6 +114,9 @@ uint32_t virtio_gpu_translate_format(uint32_t drm_fourcc)
 		break;
 	case DRM_FORMAT_ABGR8888:
 		format = VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM;
+		break;
+	case DRM_FORMAT_NV12:
+		format = DRM_FORMAT_NV12;
 		break;
 #endif
 	default:
@@ -393,7 +396,12 @@ static void virtio_gpu_resource_flush_sprite(struct drm_plane *plane, int indx,
 			kfree(fence);
 			return;
 		}
+
 		virtio_gpu_array_add_obj(objs, vgfb->base.obj[0]);
+		for(i=1; i<fb->format->num_planes; i++) {
+			if(vgfb->base.obj[i] != vgfb->base.obj[0])
+				virtio_gpu_array_add_obj(objs, vgfb->base.obj[i]);
+		}
 		virtio_gpu_array_lock_resv(objs);
 	}
 
@@ -582,7 +590,18 @@ static void virtio_gpu_primary_plane_update(struct drm_plane *plane,
 		cmd_set[cnt].data32[1]=(uint32_t)plane->state->alpha;
 		cnt++;
 	}
-
+	if ((vgdev->has_multi_planar) && (plane->state->fb->format->num_planes > 1)) {
+		struct virtio_gpu_framebuffer *vgfb;
+		cmd_set[cnt].cmd = VIRTIO_GPU_TUNNEL_CMD_SET_PLANARS;
+		cmd_set[cnt].size = plane->state->fb->format->num_planes-1;
+		vgfb = to_virtio_gpu_framebuffer(plane->state->fb);
+		for(i=1; i< plane->state->fb->format->num_planes; i++) {
+			struct virtio_gpu_object *bo;
+			bo = gem_to_virtio_gpu_obj(vgfb->base.obj[i]);
+			cmd_set[cnt].data32[i-1] = bo->hw_res_handle;
+		}
+		cnt++;
+	}
 	if(cnt) {
 		virtio_gpu_cmd_send_misc(vgdev, output->index, plane->index, cmd_set, cnt);
 	}
@@ -818,6 +837,10 @@ struct drm_plane *virtio_gpu_plane_init(struct virtio_gpu_device *vgdev,
 	} else {
 		formats = virtio_gpu_formats;
 		nformats = ARRAY_SIZE(virtio_gpu_formats);
+		if(vgdev->has_multi_planar) {
+			virtio_gpu_formats[nformats] = DRM_FORMAT_NV12;
+			nformats++;
+		}
 		funcs = &virtio_gpu_primary_helper_funcs;
 	}
 
