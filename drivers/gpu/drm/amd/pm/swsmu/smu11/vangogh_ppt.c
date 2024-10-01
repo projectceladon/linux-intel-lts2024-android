@@ -1078,9 +1078,10 @@ static int vangogh_set_power_profile_mode(struct smu_context *smu,
 }
 
 static int vangogh_set_soft_freq_limited_range(struct smu_context *smu,
-					  enum smu_clk_type clk_type,
-					  uint32_t min,
-					  uint32_t max)
+					       enum smu_clk_type clk_type,
+					       uint32_t min,
+					       uint32_t max,
+					       bool automatic)
 {
 	int ret = 0;
 
@@ -1286,7 +1287,7 @@ static int vangogh_force_dpm_limit_value(struct smu_context *smu, bool highest)
 			return ret;
 
 		force_freq = highest ? max_freq : min_freq;
-		ret = vangogh_set_soft_freq_limited_range(smu, clk_type, force_freq, force_freq);
+		ret = vangogh_set_soft_freq_limited_range(smu, clk_type, force_freq, force_freq, false);
 		if (ret)
 			return ret;
 	}
@@ -1322,7 +1323,7 @@ static int vangogh_unforce_dpm_levels(struct smu_context *smu)
 		if (ret)
 			return ret;
 
-		ret = vangogh_set_soft_freq_limited_range(smu, clk_type, min_freq, max_freq);
+		ret = vangogh_set_soft_freq_limited_range(smu, clk_type, min_freq, max_freq, false);
 
 		if (ret)
 			return ret;
@@ -1341,7 +1342,7 @@ static int vangogh_set_peak_clock_by_device(struct smu_context *smu)
 	if (ret)
 		return ret;
 
-	ret = vangogh_set_soft_freq_limited_range(smu, SMU_FCLK, fclk_freq, fclk_freq);
+	ret = vangogh_set_soft_freq_limited_range(smu, SMU_FCLK, fclk_freq, fclk_freq, false);
 	if (ret)
 		return ret;
 
@@ -1349,7 +1350,7 @@ static int vangogh_set_peak_clock_by_device(struct smu_context *smu)
 	if (ret)
 		return ret;
 
-	ret = vangogh_set_soft_freq_limited_range(smu, SMU_SOCCLK, socclk_freq, socclk_freq);
+	ret = vangogh_set_soft_freq_limited_range(smu, SMU_SOCCLK, socclk_freq, socclk_freq, false);
 	if (ret)
 		return ret;
 
@@ -1357,7 +1358,7 @@ static int vangogh_set_peak_clock_by_device(struct smu_context *smu)
 	if (ret)
 		return ret;
 
-	ret = vangogh_set_soft_freq_limited_range(smu, SMU_VCLK, vclk_freq, vclk_freq);
+	ret = vangogh_set_soft_freq_limited_range(smu, SMU_VCLK, vclk_freq, vclk_freq, false);
 	if (ret)
 		return ret;
 
@@ -1365,7 +1366,7 @@ static int vangogh_set_peak_clock_by_device(struct smu_context *smu)
 	if (ret)
 		return ret;
 
-	ret = vangogh_set_soft_freq_limited_range(smu, SMU_DCLK, dclk_freq, dclk_freq);
+	ret = vangogh_set_soft_freq_limited_range(smu, SMU_DCLK, dclk_freq, dclk_freq, false);
 	if (ret)
 		return ret;
 
