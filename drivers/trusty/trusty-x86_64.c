@@ -155,16 +155,14 @@ static int trusty_x86_64_remove_child(struct device *dev, void *data)
 	return 0;
 }
 
-static int trusty_x86_64_remove(struct platform_device *pdev)
+static void trusty_x86_64_remove(struct platform_device *pdev)
 {
 	device_for_each_child(&pdev->dev, NULL, trusty_x86_64_remove_child);
-
-	return 0;
 }
 
 static struct platform_driver trusty_x86_64_driver = {
 	.probe = trusty_x86_64_probe,
-	.remove = trusty_x86_64_remove,
+	.remove_new = trusty_x86_64_remove,
 	.driver	= {
 		.name = "trusty_x86_64",
 		.owner = THIS_MODULE,
