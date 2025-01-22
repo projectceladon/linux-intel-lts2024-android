@@ -161,7 +161,7 @@ err_allocate_work_queue:
 
 }
 
-static int trusty_timer_remove(struct platform_device *pdev)
+static void trusty_timer_remove(struct platform_device *pdev)
 {
 	struct trusty_timer_dev_state *s = platform_get_drvdata(pdev);
 	struct trusty_timer *tt;
@@ -178,7 +178,6 @@ static int trusty_timer_remove(struct platform_device *pdev)
 	destroy_workqueue(s->workqueue);
 	/* free state */
 	kfree(s);
-	return 0;
 }
 
 static const struct of_device_id trusty_test_of_match[] = {
