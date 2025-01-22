@@ -187,13 +187,11 @@ static int trusty_wall_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int trusty_wall_remove(struct platform_device *pdev)
+static void trusty_wall_remove(struct platform_device *pdev)
 {
 	struct trusty_wall_dev_state *s = platform_get_drvdata(pdev);
 
 	trusty_wall_destroy(s);
-
-	return 0;
 }
 
 static const struct of_device_id trusty_wall_of_match[] = {
@@ -205,7 +203,7 @@ MODULE_DEVICE_TABLE(of, trusty_wall_of_match);
 
 static struct platform_driver trusty_wall_driver = {
 	.probe = trusty_wall_probe,
-	.remove = trusty_wall_remove,
+	.remove_new = trusty_wall_remove,
 	.driver = {
 		.name = "trusty-wall",
 		.owner = THIS_MODULE,
