@@ -1,4 +1,4 @@
-# How do I submit patches to Android Common Kernels
+# How do I submit patches to Android Common
 
 1. BEST: Make all of your changes to upstream Linux. If appropriate, backport to the stable releases.
    These patches will be merged automatically in the corresponding common kernels. If the patch is already
