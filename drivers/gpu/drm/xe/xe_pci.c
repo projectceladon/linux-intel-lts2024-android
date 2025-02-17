@@ -30,6 +30,7 @@
 #include "xe_pm.h"
 #include "xe_sriov.h"
 #include "xe_step.h"
+#include "xe_survivability_mode.h"
 #include "xe_tile.h"
 
 enum toggle_d3cold {
@@ -61,7 +62,6 @@ struct xe_device_desc {
 	u8 has_heci_gscfi:1;
 	u8 has_heci_cscfi:1;
 	u8 has_llc:1;
-	u8 has_mmio_ext:1;
 	u8 has_sriov:1;
 	u8 skip_guc_pc:1;
 	u8 skip_mtcfg:1;
@@ -241,7 +241,6 @@ static const struct xe_device_desc adl_s_desc = {
 	PLATFORM(ALDERLAKE_S),
 	.has_display = true,
 	.has_llc = true,
-	.has_sriov = IS_ENABLED(CONFIG_DRM_XE_DEBUG),
 	.require_force_probe = true,
 	.subplatforms = (const struct xe_subplatform_desc[]) {
 		{ XE_SUBPLATFORM_ALDERLAKE_S_RPLS, "RPLS", adls_rpls_ids },
@@ -257,7 +256,6 @@ static const struct xe_device_desc adl_p_desc = {
 	PLATFORM(ALDERLAKE_P),
 	.has_display = true,
 	.has_llc = true,
-	.has_sriov = IS_ENABLED(CONFIG_DRM_XE_DEBUG),
 	.require_force_probe = true,
 	.subplatforms = (const struct xe_subplatform_desc[]) {
 		{ XE_SUBPLATFORM_ALDERLAKE_P_RPLU, "RPLU", adlp_rplu_ids },
@@ -271,7 +269,6 @@ static const struct xe_device_desc adl_n_desc = {
 	PLATFORM(ALDERLAKE_N),
 	.has_display = true,
 	.has_llc = true,
-	.has_sriov = IS_ENABLED(CONFIG_DRM_XE_DEBUG),
 	.require_force_probe = true,
 };
 
@@ -310,7 +307,6 @@ static const struct xe_device_desc ats_m_desc = {
 
 	DG2_FEATURES,
 	.has_display = false,
-	.has_sriov = IS_ENABLED(CONFIG_DRM_XE_DEBUG),
 };
 
 static const struct xe_device_desc dg2_desc = {
@@ -322,7 +318,7 @@ static const struct xe_device_desc dg2_desc = {
 	.has_display = true,
 };
 
-static const struct xe_device_desc pvc_desc = {
+static const __maybe_unused struct xe_device_desc pvc_desc = {
 	.graphics = &graphics_xehpc,
 	DGFX_FEATURES,
 	PLATFORM(PVC),
@@ -353,6 +349,7 @@ static const struct xe_device_desc bmg_desc = {
 static const struct xe_device_desc ptl_desc = {
 	PLATFORM(PANTHERLAKE),
 	.has_display = true,
+	.has_sriov = true,
 	.require_force_probe = true,
 };
 
@@ -397,7 +394,6 @@ static const struct pci_device_id pciidlist[] = {
 	INTEL_ATS_M_IDS(INTEL_VGA_DEVICE, &ats_m_desc),
 	INTEL_ARL_IDS(INTEL_VGA_DEVICE, &mtl_desc),
 	INTEL_DG2_IDS(INTEL_VGA_DEVICE, &dg2_desc),
-	INTEL_PVC_IDS(INTEL_VGA_DEVICE, &pvc_desc),
 	INTEL_MTL_IDS(INTEL_VGA_DEVICE, &mtl_desc),
 	INTEL_LNL_IDS(INTEL_VGA_DEVICE, &lnl_desc),
 	INTEL_BMG_IDS(INTEL_VGA_DEVICE, &bmg_desc),
@@ -495,7 +491,7 @@ static void read_gmdid(struct xe_device *xe, enum xe_gmdid_type type, u32 *ver, 
 		 * least basic xe_gt and xe_guc initialization.
 		 *
 		 * Since to obtain the value of GMDID_MEDIA we need to use the
-		 * media GuC, temporarly tweak the gt type.
+		 * media GuC, temporarily tweak the gt type.
 		 */
 		xe_gt_assert(gt, gt->info.type == XE_GT_TYPE_UNINITIALIZED);
 
@@ -507,6 +503,7 @@ static void read_gmdid(struct xe_device *xe, enum xe_gmdid_type type, u32 *ver, 
 			gt->info.type = XE_GT_TYPE_MAIN;
 		}
 
+		xe_gt_mmio_init(gt);
 		xe_guc_comm_init_early(&gt->uc.guc);
 
 		/* Don't bother with GMDID if failed to negotiate the GuC ABI */
@@ -622,7 +619,6 @@ static int xe_info_init_early(struct xe_device *xe,
 	xe->info.has_heci_gscfi = desc->has_heci_gscfi;
 	xe->info.has_heci_cscfi = desc->has_heci_cscfi;
 	xe->info.has_llc = desc->has_llc;
-	xe->info.has_mmio_ext = desc->has_mmio_ext;
 	xe->info.has_sriov = desc->has_sriov;
 	xe->info.skip_guc_pc = desc->skip_guc_pc;
 	xe->info.skip_mtcfg = desc->skip_mtcfg;
@@ -682,7 +678,6 @@ static int xe_info_init(struct xe_device *xe,
 
 	xe->info.graphics_name = graphics_desc->name;
 	xe->info.media_name = media_desc ? media_desc->name : "none";
-	xe->info.tile_mmio_ext_size = graphics_desc->tile_mmio_ext_size;
 
 	xe->info.dma_mask_size = graphics_desc->dma_mask_size;
 	xe->info.vram_flags = graphics_desc->vram_flags;
@@ -768,6 +763,9 @@ static void xe_pci_remove(struct pci_dev *pdev)
 	if (IS_SRIOV_PF(xe))
 		xe_pci_sriov_configure(pdev, 0);
 
+	if (xe_survivability_mode_enabled(xe))
+		return xe_survivability_mode_remove(xe);
+
 	xe_device_remove(xe);
 	xe_pm_runtime_fini(xe);
 	pci_set_drvdata(pdev, NULL);
@@ -786,7 +784,7 @@ static void xe_pci_remove(struct pci_dev *pdev)
  * error injectable functions is proper handling of the error code by the
  * caller for recovery, which is always the case here. The second
  * requirement is that no state is changed before the first error return.
- * It is not strictly fullfilled for all initialization functions using the
+ * It is not strictly fulfilled for all initialization functions using the
  * ALLOW_ERROR_INJECTION() macro but this is acceptable because for those
  * error cases at probe time, the error code is simply propagated up by the
  * caller. Therefore there is no consequence on those specific callers when
@@ -798,7 +796,7 @@ static int xe_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	const struct xe_subplatform_desc *subplatform_desc;
 	struct xe_device *xe;
 	int err;
-
+	dev_info(&pdev->dev, "xiaolin@%s:06:/home/xzhan34/work/dii-gfx/drivers.gpu.linux-xe.kernel mmio\n", __func__);
 	if (desc->require_force_probe && !id_forced(pdev->device)) {
 		dev_info(&pdev->dev,
 			 "Your graphics device %04x is not officially supported\n"
@@ -840,8 +838,19 @@ static int xe_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return err;
 
 	err = xe_device_probe_early(xe);
-	if (err)
+
+	/*
+	 * In Boot Survivability mode, no drm card is exposed
+	 * and driver is loaded with bare minimum to allow
+	 * for firmware to be flashed through mei. Return
+	 * success if survivability mode is enabled.
+	 */
+	if (err) {
+		if (xe_survivability_mode_enabled(xe))
+			return 0;
+
 		return err;
+	}
 
 	err = xe_info_init(xe, desc->graphics, desc->media);
 	if (err)
@@ -928,9 +937,13 @@ static void d3cold_toggle(struct pci_dev *pdev, enum toggle_d3cold toggle)
 static int xe_pci_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
+	struct xe_device *xe = pdev_to_xe_device(pdev);
 	int err;
 
-	err = xe_pm_suspend(pdev_to_xe_device(pdev));
+	if (xe_survivability_mode_enabled(xe))
+		return -EBUSY;
+
+	err = xe_pm_suspend(xe);
 	if (err)
 		return err;
 
