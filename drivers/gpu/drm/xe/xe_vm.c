@@ -10,6 +10,7 @@
 
 #include <drm/drm_exec.h>
 #include <drm/drm_print.h>
+#include <drm/ttm/ttm_execbuf_util.h>
 #include <drm/ttm/ttm_tt.h>
 #include <uapi/drm/xe_drm.h>
 #include <linux/ascii85.h>
@@ -1024,7 +1025,7 @@ static void xe_vma_destroy_late(struct xe_vma *vma)
 
 		/*
 		 * Since userptr pages are not pinned, we can't remove
-		 * the notifer until we're sure the GPU is not accessing
+		 * the notifier until we're sure the GPU is not accessing
 		 * them anymore
 		 */
 		mmu_interval_notifier_remove(&userptr->notifier);
@@ -2107,7 +2108,7 @@ static int xe_vma_op_commit(struct xe_vm *vm, struct xe_vma_op *op)
 			}
 		}
 
-		/* Adjust for partial unbind after removin VMA from VM */
+		/* Adjust for partial unbind after removing VMA from VM */
 		if (!err) {
 			op->base.remap.unmap->va->va.addr = op->remap.start;
 			op->base.remap.unmap->va->va.range = op->remap.range;
