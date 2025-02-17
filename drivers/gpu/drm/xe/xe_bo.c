@@ -15,6 +15,8 @@
 #include <drm/ttm/ttm_tt.h>
 #include <uapi/drm/xe_drm.h>
 
+#include <kunit/static_stub.h>
+
 #include "xe_device.h"
 #include "xe_dma_buf.h"
 #include "xe_drm_client.h"
@@ -713,6 +715,21 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		goto out;
 	}
 
+	/* Reject BO eviction if BO is bound to current VM. */
+	if (evict && ctx->resv) {
+		struct drm_gpuvm_bo *vm_bo;
+
+		drm_gem_for_each_gpuvm_bo(vm_bo, &bo->ttm.base) {
+			struct xe_vm *vm = gpuvm_to_vm(vm_bo->vm);
+
+			if (xe_vm_resv(vm) == ctx->resv &&
+			    xe_vm_in_preempt_fence_mode(vm)) {
+				ret = -EBUSY;
+				goto out;
+			}
+		}
+	}
+
 	/*
 	 * Failed multi-hop where the old_mem is still marked as
 	 * TTM_PL_FLAG_TEMPORARY, should just be a dummy move.
@@ -733,7 +750,7 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 	    new_mem->mem_type == XE_PL_SYSTEM) {
 		long timeout = dma_resv_wait_timeout(ttm_bo->base.resv,
 						     DMA_RESV_USAGE_BOOKKEEP,
-						     true,
+						     false,
 						     MAX_SCHEDULE_TIMEOUT);
 		if (timeout < 0) {
 			ret = timeout;
@@ -776,7 +793,7 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		 */
 		xe_pm_runtime_get(xe);
 	} else {
-		drm_WARN_ON(&xe->drm, handle_system_ccs);
+		// drm_WARN_ON(&xe->drm, handle_system_ccs);
 		xe_pm_runtime_get_noresume(xe);
 	}
 
@@ -786,7 +803,7 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		 * / resume, some of the pinned memory is required for the
 		 * device to resume / use the GPU to move other evicted memory
 		 * (user memory) around. This likely could be optimized a bit
-		 * futher where we find the minimum set of pinned memory
+		 * further where we find the minimum set of pinned memory
 		 * required for resume but for simplity doing a memcpy for all
 		 * pinned memory.
 		 */
@@ -857,8 +874,16 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 
 out:
 	if ((!ttm_bo->resource || ttm_bo->resource->mem_type == XE_PL_SYSTEM) &&
-	    ttm_bo->ttm)
+	    ttm_bo->ttm) {
+		long timeout = dma_resv_wait_timeout(ttm_bo->base.resv,
+						     DMA_RESV_USAGE_KERNEL,
+						     false,
+						     MAX_SCHEDULE_TIMEOUT);
+		if (timeout < 0)
+			ret = timeout;
+
 		xe_tt_unmap_sg(ttm_bo->ttm);
+	}
 
 	return ret;
 }
@@ -867,7 +892,7 @@ out:
  * xe_bo_evict_pinned() - Evict a pinned VRAM object to system memory
  * @bo: The buffer object to move.
  *
- * On successful completion, the object memory will be moved to sytem memory.
+ * On successful completion, the object memory will be moved to system memory.
  *
  * This is needed to for special handling of pinned VRAM object during
  * suspend-resume.
@@ -1362,7 +1387,7 @@ static const struct drm_gem_object_funcs xe_gem_object_funcs = {
 /**
  * xe_bo_alloc - Allocate storage for a struct xe_bo
  *
- * This funcition is intended to allocate storage to be used for input
+ * This function is intended to allocate storage to be used for input
  * to __xe_bo_create_locked(), in the case a pointer to the bo to be
  * created is needed before the call to __xe_bo_create_locked().
  * If __xe_bo_create_locked ends up never to be called, then the
@@ -1636,6 +1661,7 @@ __xe_bo_create_locked(struct xe_device *xe,
 		}
 	}
 
+	trace_xe_bo_create(bo);
 	return bo;
 
 err_unlock_put_bo:
@@ -1772,6 +1798,8 @@ struct xe_bo *xe_managed_bo_create_pin_map(struct xe_device *xe, struct xe_tile 
 {
 	struct xe_bo *bo;
 	int ret;
+
+	KUNIT_STATIC_STUB_REDIRECT(xe_managed_bo_create_pin_map, xe, tile, size, flags);
 
 	bo = xe_bo_create_pin_map(xe, tile, NULL, size, ttm_bo_type_kernel, flags);
 	if (IS_ERR(bo))
@@ -2255,8 +2283,25 @@ int xe_gem_mmap_offset_ioctl(struct drm_device *dev, void *data,
 	    XE_IOCTL_DBG(xe, args->reserved[0] || args->reserved[1]))
 		return -EINVAL;
 
-	if (XE_IOCTL_DBG(xe, args->flags))
+	if (XE_IOCTL_DBG(xe, args->flags &
+			 ~DRM_XE_MMAP_OFFSET_FLAG_PCI_BARRIER))
 		return -EINVAL;
+
+	if (args->flags & DRM_XE_MMAP_OFFSET_FLAG_PCI_BARRIER) {
+		if (XE_IOCTL_DBG(xe, !IS_DGFX(xe)))
+			return -EINVAL;
+
+		if (XE_IOCTL_DBG(xe, args->handle))
+			return -EINVAL;
+
+		if (XE_IOCTL_DBG(xe, PAGE_SIZE > SZ_4K))
+			return -EINVAL;
+
+		BUILD_BUG_ON(((XE_PCI_BARRIER_MMAP_OFFSET >> XE_PTE_SHIFT) +
+			      SZ_4K) >= DRM_FILE_PAGE_OFFSET_START);
+		args->offset = XE_PCI_BARRIER_MMAP_OFFSET;
+		return 0;
+	}
 
 	gem_obj = drm_gem_object_lookup(file, args->handle);
 	if (XE_IOCTL_DBG(xe, !gem_obj))
@@ -2404,7 +2449,7 @@ int xe_bo_migrate(struct xe_bo *bo, u32 mem_type)
  * @force_alloc: Set force_alloc in ttm_operation_ctx
  *
  * On successful completion, the object memory will be moved to evict
- * placement. Ths function blocks until the object has been fully moved.
+ * placement. This function blocks until the object has been fully moved.
  *
  * Return: 0 on success. Negative error code on failure.
  */

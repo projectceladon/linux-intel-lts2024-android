@@ -710,7 +710,7 @@ static int h2g_write(struct xe_guc_ct *ct, const u32 *action, u32 len,
 	--len;
 	++action;
 
-	/* Write H2G ensuring visable before descriptor update */
+	/* Write H2G ensuring visible before descriptor update */
 	xe_map_memcpy_to(xe, &map, 0, cmd, H2G_CT_HEADERS * sizeof(u32));
 	xe_map_memcpy_to(xe, &map, H2G_CT_HEADERS * sizeof(u32), action, len * sizeof(u32));
 	xe_device_wmb(xe);
@@ -1383,7 +1383,7 @@ static int g2h_read(struct xe_guc_ct *ct, u32 *msg, bool fast_path)
 		 * this function and nowhere else. Hence, they cannot be different
 		 * unless two g2h_read calls are running concurrently. Which is not
 		 * possible because it is guarded by ct->fast_lock. And yet, some
-		 * discrete platforms are reguarly hitting this error :(.
+		 * discrete platforms are regularly hitting this error :(.
 		 *
 		 * desc_head rolling backwards shouldn't cause any noticeable
 		 * problems - just a delay in GuC being allowed to proceed past that
@@ -1723,8 +1723,11 @@ void xe_guc_ct_snapshot_print(struct xe_guc_ct_snapshot *snapshot,
 		drm_printf(p, "\tg2h outstanding: %d\n",
 			   snapshot->g2h_outstanding);
 
-		if (snapshot->ctb)
-			xe_print_blob_ascii85(p, "CTB data", snapshot->ctb, 0, snapshot->ctb_size);
+		if (snapshot->ctb) {
+			drm_printf(p, "[CTB].length: 0x%zx\n", snapshot->ctb_size);
+			xe_print_blob_ascii85(p, "[CTB].data", '\n',
+					      snapshot->ctb, 0, snapshot->ctb_size);
+		}
 	} else {
 		drm_puts(p, "CT disabled\n");
 	}
