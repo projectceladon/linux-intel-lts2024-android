@@ -38,12 +38,15 @@
 #include <drm/drm_drv.h>
 #include <drm/drm_fbdev_shmem.h>
 #include <drm/drm_file.h>
+#include <drm/drm_vblank.h>
 
 #include "virtgpu_drv.h"
 
 static const struct drm_driver driver;
 
 static int virtio_gpu_modeset = -1;
+
+MODULE_IMPORT_NS(DMA_BUF);
 
 MODULE_PARM_DESC(modeset, "Disable/Enable modesetting");
 module_param_named(modeset, virtio_gpu_modeset, int, 0400);
@@ -71,6 +74,7 @@ static int virtio_gpu_probe(struct virtio_device *vdev)
 {
 	struct drm_device *dev;
 	int ret;
+	struct virtio_gpu_device *pgpudev;
 
 	if (drm_firmware_drivers_only() && virtio_gpu_modeset == -1)
 		return -EINVAL;
@@ -99,6 +103,15 @@ static int virtio_gpu_probe(struct virtio_device *vdev)
 	ret = virtio_gpu_init(vdev, dev);
 	if (ret)
 		goto err_free;
+
+	pgpudev = dev->dev_private;
+	if(pgpudev->num_vblankq) {
+		ret = drm_vblank_init(dev, pgpudev->num_vblankq);
+		if (ret) {
+			DRM_ERROR("could not init vblank\n");
+			goto err_deinit;
+		}
+	}
 
 	ret = drm_dev_register(dev, 0);
 	if (ret)
@@ -151,7 +164,78 @@ static unsigned int features[] = {
 	VIRTIO_GPU_F_RESOURCE_UUID,
 	VIRTIO_GPU_F_RESOURCE_BLOB,
 	VIRTIO_GPU_F_CONTEXT_INIT,
+	VIRTIO_GPU_F_MODIFIER,
+	VIRTIO_GPU_F_SCALING,
+	VIRTIO_GPU_F_VBLANK,
+	VIRTIO_GPU_F_ALLOW_P2P,
+	VIRTIO_GPU_F_MULTI_PLANE,
+	VIRTIO_GPU_F_ROTATION,
+	VIRTIO_GPU_F_PIXEL_BLEND_MODE,
+	VIRTIO_GPU_F_MULTI_PLANAR_FORMAT,
 };
+
+#ifdef CONFIG_PM_SLEEP
+static int virtgpu_freeze(struct virtio_device *vdev)
+{
+	struct drm_device *dev = vdev->priv;
+	struct virtio_gpu_device *vgdev = dev->dev_private;
+	int error;
+
+	error = drm_mode_config_helper_suspend(dev);
+	if (error) {
+		DRM_ERROR("suspend error %d\n", error);
+		return error;
+	}
+
+	vdev->config->reset(vdev);
+	flush_work(&vgdev->obj_free_work);
+	flush_work(&vgdev->ctrlq.dequeue_work);
+	flush_work(&vgdev->cursorq.dequeue_work);
+	flush_work(&vgdev->config_changed_work);
+	vdev->config->del_vqs(vdev);
+
+	return 0;
+}
+
+static int virtgpu_restore(struct virtio_device *vdev)
+{
+	struct drm_device *dev = vdev->priv;
+	struct virtio_gpu_device *vgdev = dev->dev_private;
+	int error, i;
+
+	error = virtio_gpu_find_vqs(vgdev);
+	if (error) {
+		DRM_ERROR("failed to find virt queues\n");
+		return error;
+	}
+
+	virtio_device_ready(vdev);
+
+
+	if(vgdev->has_vblank) {
+		virtio_gpu_vblankq_notify(vgdev);
+
+		for(i = 0; i < vgdev->num_vblankq; i++)
+			virtqueue_disable_cb(vgdev->vblank[i].vblank.vq);
+	}
+
+
+	error = virtio_gpu_object_restore_all(vgdev);
+	if (error) {
+		DRM_ERROR("Failed to recover objects\n");
+		return error;
+	}
+
+	error = drm_mode_config_helper_resume(dev);
+	if (error) {
+		DRM_ERROR("resume error %d\n", error);
+		return error;
+	}
+
+	return 0;
+}
+#endif
+
 static struct virtio_driver virtio_gpu_driver = {
 	.feature_table = features,
 	.feature_table_size = ARRAY_SIZE(features),
@@ -159,7 +243,11 @@ static struct virtio_driver virtio_gpu_driver = {
 	.id_table = id_table,
 	.probe = virtio_gpu_probe,
 	.remove = virtio_gpu_remove,
-	.config_changed = virtio_gpu_config_changed
+	.config_changed = virtio_gpu_config_changed,
+#ifdef CONFIG_PM_SLEEP
+	.freeze = virtgpu_freeze,
+	.restore = virtgpu_restore,
+#endif
 };
 
 module_virtio_driver(virtio_gpu_driver);

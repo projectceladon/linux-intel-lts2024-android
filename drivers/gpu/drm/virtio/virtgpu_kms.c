@@ -114,17 +114,80 @@ static void virtio_gpu_get_capsets(struct virtio_gpu_device *vgdev,
 	vgdev->num_capsets = num_capsets;
 }
 
+static void virtio_gpu_get_planes(struct virtio_gpu_device *vgdev)
+{
+        int i;
+        for(i=0; i < vgdev->num_scanouts; i++) {
+                vgdev->outputs[i].plane_num = 0;
+                virtio_gpu_cmd_get_planes_info(vgdev, i);
+                virtio_gpu_notify(vgdev);
+                wait_event_timeout(vgdev->resp_wq,
+                                vgdev->outputs[i].plane_num, 5 * HZ);
+        }
+}
+
+int virtio_gpu_find_vqs(struct virtio_gpu_device *vgdev)
+{
+        struct virtqueue_info *vqs_info;
+        vq_callback_t **callbacks;
+        struct virtqueue **vqs;
+        int i, total_vqs, err;
+        const char **names;
+        int ret = 0;
+
+        total_vqs = vgdev->num_vblankq + 2;
+        vqs = kcalloc(total_vqs, sizeof(*vqs), GFP_KERNEL);
+        callbacks = kmalloc_array(total_vqs, sizeof(vq_callback_t *),
+                                  GFP_KERNEL);
+        names = kmalloc_array(total_vqs, sizeof(char *), GFP_KERNEL);
+        vqs_info = kmalloc_array(total_vqs, sizeof(struct virtqueue_info *),
+                                GFP_KERNEL);
+
+        if (!callbacks || !vqs || !names || !vqs_info) {
+                err = -ENOMEM;
+                goto out;
+        }
+
+        callbacks[0] = virtio_gpu_ctrl_ack;
+        callbacks[1] = virtio_gpu_cursor_ack;
+        names[0] = "control";
+        names[1] = "cursor";
+        for (i = 2; i < total_vqs; i++) {
+                callbacks[i] = virtio_gpu_vblank_ack;
+                names[i] = "vblank";
+        }
+
+        for (i = 0; i < total_vqs; i++) {
+                vqs_info[i].callback = callbacks[i];
+                vqs_info[i].name = names[i];
+        }
+
+        ret = virtio_find_vqs(vgdev->vdev, total_vqs, vqs, vqs_info, NULL);
+        if (ret)
+                goto out;
+
+        vgdev->ctrlq.vq = vqs[0];
+        vgdev->cursorq.vq = vqs[1];
+
+        for (i = 2; i < total_vqs; i++)
+                vgdev->vblank[i-2].vblank.vq = vqs[i];
+
+        ret = 0;
+out:
+        kfree(names);
+
+        kfree(callbacks);
+        kfree(vqs);
+        kfree(vqs_info);
+        return ret;
+}
+
 int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 {
-	struct virtqueue_info vqs_info[] = {
-		{ "control", virtio_gpu_ctrl_ack },
-		{ "cursor", virtio_gpu_cursor_ack },
-	};
 	struct virtio_gpu_device *vgdev;
-	/* this will expand later */
-	struct virtqueue *vqs[2];
 	u32 num_scanouts, num_capsets;
 	int ret = 0;
+	int i;
 
 	if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1))
 		return -ENODEV;
@@ -149,6 +212,7 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 	vgdev->fence_drv.context = dma_fence_context_alloc(1);
 	spin_lock_init(&vgdev->fence_drv.lock);
 	INIT_LIST_HEAD(&vgdev->fence_drv.fences);
+	INIT_LIST_HEAD(&vgdev->obj_rec);
 	INIT_LIST_HEAD(&vgdev->cap_cache);
 	INIT_WORK(&vgdev->config_changed_work,
 		  virtio_gpu_config_changed_work_func);
@@ -171,8 +235,32 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_RESOURCE_UUID)) {
 		vgdev->has_resource_assign_uuid = true;
 	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_SCALING)) {
+		vgdev->has_scaling = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_VBLANK)) {
+		vgdev->has_vblank = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_ALLOW_P2P)) {
+		vgdev->has_allow_p2p = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MULTI_PLANE)) {
+		vgdev->has_multi_plane = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_ROTATION)) {
+		vgdev->has_rotation = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_PIXEL_BLEND_MODE)) {
+		vgdev->has_pixel_blend_mode = true;
+	}
+	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MULTI_PLANAR_FORMAT)) {
+		vgdev->has_multi_planar = true;
+	}
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_RESOURCE_BLOB)) {
 		vgdev->has_resource_blob = true;
+		if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MODIFIER)) {
+			vgdev->has_modifier = true;
+		}
 	}
 	if (virtio_get_shm_region(vgdev->vdev, &vgdev->host_visible_region,
 				  VIRTIO_GPU_SHM_ID_HOST_VISIBLE)) {
@@ -203,21 +291,14 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 		 vgdev->has_resource_blob ? '+' : '-',
 		 vgdev->has_host_visible ? '+' : '-');
 
+	DRM_INFO("features: %cscaling %cvblank %cmodifier %cmulti_plane",
+		 vgdev->has_scaling ? '+' : '-',
+		 vgdev->has_vblank ? '+' : '-',
+		 vgdev->has_modifier ? '+' : '-',
+		 vgdev->has_multi_plane ? '+' : '-');
+
 	DRM_INFO("features: %ccontext_init\n",
 		 vgdev->has_context_init ? '+' : '-');
-
-	ret = virtio_find_vqs(vgdev->vdev, 2, vqs, vqs_info, NULL);
-	if (ret) {
-		DRM_ERROR("failed to find virt queues\n");
-		goto err_vqs;
-	}
-	vgdev->ctrlq.vq = vqs[0];
-	vgdev->cursorq.vq = vqs[1];
-	ret = virtio_gpu_alloc_vbufs(vgdev);
-	if (ret) {
-		DRM_ERROR("failed to alloc vbufs\n");
-		goto err_vbufs;
-	}
 
 	/* get display info */
 	virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
@@ -238,16 +319,49 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 			num_capsets, &num_capsets);
 	DRM_INFO("number of cap sets: %d\n", num_capsets);
 
-	ret = virtio_gpu_modeset_init(vgdev);
+	vgdev->num_vblankq = 0;
+	if(vgdev->has_vblank)
+		virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
+                               num_pipe, &vgdev->num_vblankq);
+	if (vgdev->num_vblankq > vgdev->num_scanouts) {
+		DRM_WARN("virtio gpu has wrong vblank number\n");
+		vgdev->num_vblankq = vgdev->num_scanouts;
+	}
+
+	for(i=0; i<vgdev->num_vblankq; i++)
+		spin_lock_init(&vgdev->vblank[i].vblank.qlock);
+
+	ret = virtio_gpu_find_vqs(vgdev);
 	if (ret) {
-		DRM_ERROR("modeset init failed\n");
-		goto err_scanouts;
+		DRM_ERROR("failed to find virt queues\n");
+		goto err_vqs;
+	}
+	ret = virtio_gpu_alloc_vbufs(vgdev);
+	if (ret) {
+		DRM_ERROR("failed to alloc vbufs\n");
+		goto err_vbufs;
 	}
 
 	virtio_device_ready(vgdev->vdev);
 
 	if (num_capsets)
 		virtio_gpu_get_capsets(vgdev, num_capsets);
+
+	if(vgdev->has_multi_plane)
+		virtio_gpu_get_planes(vgdev);
+
+	ret = virtio_gpu_modeset_init(vgdev);
+	if (ret) {
+		DRM_ERROR("modeset init failed\n");
+		goto err_scanouts;
+	}
+
+	virtio_gpu_vblankq_notify(vgdev);
+
+	for(i=0; i < vgdev->num_vblankq; i++)
+		virtqueue_disable_cb(vgdev->vblank[i].vblank.vq);
+
+
 	if (vgdev->num_scanouts) {
 		if (vgdev->has_edid)
 			virtio_gpu_cmd_get_edids(vgdev);

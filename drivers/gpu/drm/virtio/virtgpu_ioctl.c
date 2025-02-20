@@ -114,6 +114,12 @@ static int virtio_gpu_getparam_ioctl(struct drm_device *dev, void *data,
 	case VIRTGPU_PARAM_SUPPORTED_CAPSET_IDs:
 		value = vgdev->capset_id_mask;
 		break;
+	case VIRTGPU_PARAM_QUERY_DEV:
+		value = (strcmp(dev->dev->driver->name, "virtio-pci") == 0) ? 1 : 0;
+		break;
+	case VIRTGPU_PARAM_ALLOW_P2P:
+		value = vgdev->has_allow_p2p ? 1 : 0;
+		break;
 	case VIRTGPU_PARAM_EXPLICIT_DEBUG_NAME:
 		value = vgdev->has_context_init ? 1 : 0;
 		break;
