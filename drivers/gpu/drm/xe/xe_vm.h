@@ -17,6 +17,7 @@ struct drm_printer;
 struct drm_file;
 
 struct ttm_buffer_object;
+struct ttm_validate_buffer;
 
 struct xe_exec_queue;
 struct xe_file;
