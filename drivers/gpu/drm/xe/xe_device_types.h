@@ -405,6 +405,20 @@ struct xe_device {
 		struct list_head external_vram;
 	} pinned;
 
+	/** @work_period: gpu work period event */
+	struct {
+		/** @lock: lock protecting this structure */
+		spinlock_t lock;
+		/** @timer: timer to give periodic interrupts to emit the
+		 * gpu work period event
+		 */
+		struct timer_list timer;
+		/** @user_list: list of xe users using this xe device */
+		struct list_head user_list;
+		/** @wq: workqueue for work period event emitting work */
+		struct workqueue_struct *wq;
+	} work_period;
+
 	/** @ufence_wq: user fence wait queue */
 	wait_queue_head_t ufence_wq;
 
@@ -619,6 +633,9 @@ struct xe_file {
 	/** @run_ticks: hw engine class run time in ticks for this drm client */
 	u64 run_ticks[XE_ENGINE_CLASS_MAX];
 
+	/** @active_duration_ns: total run time in ns for this drm client */
+	u64 active_duration_ns;
+
 	/** @client: drm client */
 	struct xe_drm_client *client;
 
@@ -633,6 +650,15 @@ struct xe_file {
 	 * situations where xe file can outlive process
 	 */
 	pid_t pid;
+
+	/**
+	 * @user_link: entry into xe_user.filelist list
+	 */
+	struct list_head user_link;
+	/**
+	 * @user: pointer to the xe user struct that opened this xe file
+	 */
+	struct xe_user *user;
 
 	/** @refcount: ref count of this xe file */
 	struct kref refcount;

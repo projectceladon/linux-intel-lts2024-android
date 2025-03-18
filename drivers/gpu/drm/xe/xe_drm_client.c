@@ -21,6 +21,9 @@
 #include "xe_pm.h"
 #include "xe_trace.h"
 
+#define CREATE_TRACE_POINTS
+#include "xe_power_gpu_work_period_trace.h"
+
 /**
  * DOC: DRM Client usage stats
  *
@@ -395,3 +398,109 @@ void xe_drm_client_fdinfo(struct drm_printer *p, struct drm_file *file)
 	show_run_ticks(p, file);
 }
 #endif
+
+/**
+ * worker thread to emit gpu work period event for this xe user
+ * @work: work instance for this xe user
+ *
+ * Return: void
+ */
+static inline void work_period_worker(struct work_struct *work)
+{
+	struct xe_user *user = container_of(work, struct xe_user, work);
+	struct xe_device *xe = user->xe;
+	struct xe_file *xef;
+	struct xe_exec_queue *q;
+	u64 last_active_duration, last_timestamp;
+	u32 gpuid = 0, uid = user->uid;
+	u64 start_time, end_time, active_duration;
+	unsigned long i;
+
+	last_active_duration = user->active_duration_ns;
+	last_timestamp = user->last_timestamp_ns;
+
+	xe_pm_runtime_get(xe);
+
+	if (!list_empty(&user->filelist)) {
+		spin_lock(&user->filelist_lock);
+		list_for_each_entry(xef, &user->filelist, user_link) {
+
+			/*
+			 * Wait for any exec queue going away:
+			 * their cycles will get updated on context switch out,
+			 * so wait for that to happen
+			 */
+			wait_var_event(&xef->exec_queue.pending_removal,
+		    !atomic_read(&xef->exec_queue.pending_removal));
+
+			/* Accumulate all the exec queues from this xe file */
+			mutex_lock(&xef->exec_queue.lock);
+			xa_for_each(&xef->exec_queue.xa, i, q) {
+				xe_exec_queue_get(q);
+				mutex_unlock(&xef->exec_queue.lock);
+
+				xe_exec_queue_update_run_ticks(q);
+
+				mutex_lock(&xef->exec_queue.lock);
+				xe_exec_queue_put(q);
+			}
+			mutex_unlock(&xef->exec_queue.lock);
+			user->active_duration_ns += xef->active_duration_ns;
+		}
+		spin_unlock(&user->filelist_lock);
+	}
+
+	xe_pm_runtime_put(xe);
+
+	start_time = last_timestamp + 1;
+	end_time = ktime_get_raw_ns();
+	active_duration = user->active_duration_ns - last_active_duration;
+	/* emit the gpu work period event */
+	trace_gpu_work_period(gpuid, uid, start_time, end_time, active_duration);
+	user->last_timestamp_ns = end_time;
+}
+
+/**
+ * xe_user_alloc() - Allocate xe user
+ * @void: No arg
+ *
+ * Allocate xe user struct to track activity on the gpu
+ * by the application. Call this API whenever a new app
+ * has opened xe device.
+ *
+ * Return: pointer to user struct or NULL if can't allocate
+ */
+struct xe_user *xe_user_alloc(const unsigned int uid)
+{
+	struct xe_user *user;
+
+	user = kzalloc(sizeof(*user), GFP_KERNEL);
+	if (!user || !uid)
+		return NULL;
+
+	user->uid = uid;
+	kref_init(&user->kref);
+	spin_lock_init(&user->filelist_lock);
+	INIT_LIST_HEAD(&user->filelist);
+	INIT_LIST_HEAD(&user->entry);
+	INIT_WORK(&user->work, work_period_worker);
+	return user;
+}
+
+/**
+ * __xe_user_free() - Free user struct
+ * @kref: The reference
+ *
+ * destroy this xe user when the last xe file associated with
+ * this xe user is destroyed
+ *
+ * Return: void
+ */
+void __xe_user_free(struct kref *kref)
+{
+	struct xe_user *user =
+		container_of(kref, typeof(*user), kref);
+
+	list_del(&user->entry);
+	kfree(user);
+}
