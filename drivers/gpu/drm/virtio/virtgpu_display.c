@@ -123,11 +123,6 @@ static void virtio_gpu_crtc_mode_set_nofb(struct drm_crtc *crtc)
 static void virtio_gpu_crtc_atomic_enable(struct drm_crtc *crtc,
 					  struct drm_atomic_state *state)
 {
-	struct drm_device *dev = crtc->dev;
-	struct virtio_gpu_device *vgdev = dev->dev_private;
-	if(vgdev->has_vblank) {
-		drm_crtc_vblank_on(crtc);
-	}
 }
 
 static void virtio_gpu_crtc_atomic_disable(struct drm_crtc *crtc,
@@ -137,9 +132,6 @@ static void virtio_gpu_crtc_atomic_disable(struct drm_crtc *crtc,
 	struct virtio_gpu_device *vgdev = dev->dev_private;
 	struct virtio_gpu_output *output = drm_crtc_to_virtio_gpu_output(crtc);
 
-	if(vgdev->has_vblank) {
-		drm_crtc_vblank_off(crtc);
-	}
 	virtio_gpu_cmd_set_scanout(vgdev, output->index, 0, 0, 0, 0, 0);
 	virtio_gpu_notify(vgdev);
 }
@@ -157,19 +149,16 @@ static void virtio_gpu_crtc_atomic_flush(struct drm_crtc *crtc,
 									  crtc);
 	struct virtio_gpu_output *output = drm_crtc_to_virtio_gpu_output(crtc);
 	struct drm_device *drm = crtc->dev;
-	struct virtio_gpu_device *vgdev = drm->dev_private;
 
-	if(vgdev->has_vblank) {
-		if (crtc->state->event) {
-			spin_lock_irq(&drm->event_lock);
-			if (drm_crtc_vblank_get(crtc) != 0)
-				drm_crtc_send_vblank_event(crtc, crtc->state->event);
-			else
-				drm_crtc_arm_vblank_event(crtc, crtc->state->event);
-			spin_unlock_irq(&drm->event_lock);
-			crtc->state->event = NULL;
-		}
+	spin_lock_irq(&drm->event_lock);
+
+
+	if (crtc->state->event) {
+		drm_crtc_send_vblank_event(crtc, crtc->state->event);
+		crtc->state->event = NULL;
 	}
+
+	spin_unlock_irq(&drm->event_lock);
 
 	/*
 	 * virtio-gpu can't do modeset and plane update operations
