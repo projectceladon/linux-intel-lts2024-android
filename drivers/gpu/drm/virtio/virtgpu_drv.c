@@ -153,7 +153,6 @@ static unsigned int features[] = {
 	VIRTIO_GPU_F_CONTEXT_INIT,
 	VIRTIO_GPU_F_MODIFIER,
 	VIRTIO_GPU_F_SCALING,
-	VIRTIO_GPU_F_VBLANK,
 };
 
 #ifdef CONFIG_PM_SLEEP
