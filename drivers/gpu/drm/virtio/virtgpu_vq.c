@@ -100,37 +100,21 @@ void virtio_gpu_vblank_ack(struct virtqueue *vq)
 	unsigned long irqflags;
 	unsigned int len;
 	unsigned int *ret_value;
-	unsigned target = 0;
+	int target = 0;
 
 	while((target < vgdev->num_vblankq) && (vgdev->vblank[target].vblank.vq != vq)) {
 		target++;
 	}
 
-	while ((ret_value = virtqueue_get_buf(vgdev->vblank[target].vblank.vq, &len)) != NULL) {
-		spin_lock_irqsave(&vgdev->vblank[target].vblank.qlock, irqflags);
+	spin_lock_irqsave(&vgdev->vblank[target].vblank.qlock, irqflags);
+	if((ret_value = virtqueue_get_buf(vgdev->vblank[target].vblank.vq, &len)) != NULL) {
+
 		virtgpu_irqqueue_buf(vgdev->vblank[target].vblank.vq, ret_value);
-		spin_unlock_irqrestore(&vgdev->vblank[target].vblank.qlock, irqflags);
-
-		drm_handle_vblank(dev, target);
-
-		if (*ret_value != 0) {
-			atomic64_set(&vgdev->flip_sequence[target], *ret_value);
-		}
-
 	}
 
-	if (!vgdev->has_flip_sequence)
-		return;
+	spin_unlock_irqrestore(&vgdev->vblank[target].vblank.qlock, irqflags);
+	drm_handle_vblank(dev, target);
 
-	struct drm_pending_vblank_event *e = vgdev->cache_event[target];
-	if (e && drm_vblank_passed(atomic64_read(&vgdev->flip_sequence[target]),
-				   e->sequence)) {
-		spin_lock_irqsave(&dev->event_lock, irqflags);
-		drm_crtc_send_vblank_event(&vgdev->outputs[target].crtc, e);
-		vgdev->cache_event[target] = NULL;
-		spin_unlock_irqrestore(&dev->event_lock, irqflags);
-		drm_crtc_vblank_put(&vgdev->outputs[target].crtc);
-	}
 }
 
 void virtio_gpu_cursor_ack(struct virtqueue *vq)
