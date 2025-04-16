@@ -185,9 +185,6 @@ struct virtio_gpu_vbuffer {
 #define VIRTIO_GPU_MAX_PLANES 6
 /*hardcode igpu scaler number ver>11 */
 #define SKL_NUM_SCALERS 2
-
-#define VBLANK_EVENT_CACHE_SIZE	3
-
 struct virtio_gpu_output {
 	int index;
 	struct drm_crtc crtc;
@@ -248,19 +245,12 @@ struct virtio_gpu_vblank {
 	uint32_t buf[4];
 };
 
-static inline bool drm_vblank_passed(u64 seq, u64 ref)
-{
-	return (seq - ref) <= (1 << 23);
-}
-
 struct virtio_gpu_device {
 	struct drm_device *ddev;
 
 	struct virtio_device *vdev;
 
 	struct virtio_gpu_output outputs[VIRTIO_GPU_MAX_SCANOUTS];
-	struct drm_pending_vblank_event *cache_event[VIRTIO_GPU_MAX_SCANOUTS];
-	atomic64_t flip_sequence[VIRTIO_GPU_MAX_SCANOUTS];
 	uint32_t num_scanouts;
 	uint32_t num_vblankq;
 	struct virtio_gpu_queue ctrlq;
@@ -287,7 +277,6 @@ struct virtio_gpu_device {
 	bool has_scaling;
 	bool has_vblank;
 	bool has_allow_p2p;
-	bool has_flip_sequence;
 	bool has_multi_plane;
 	bool has_rotation;
 	bool has_pixel_blend_mode;

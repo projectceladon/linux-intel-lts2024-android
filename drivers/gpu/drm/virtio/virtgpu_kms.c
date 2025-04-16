@@ -244,9 +244,6 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_ALLOW_P2P)) {
 		vgdev->has_allow_p2p = true;
 	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_FLIP_SEQUENCE)) {
-		vgdev->has_flip_sequence = true;
-	}
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MULTI_PLANE)) {
 		vgdev->has_multi_plane = true;
 	}
@@ -300,10 +297,8 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 		 vgdev->has_modifier ? '+' : '-',
 		 vgdev->has_multi_plane ? '+' : '-');
 
-	DRM_INFO("features: %ccontext_init %callow_p2p %cflip_sequence\n",
-		 vgdev->has_context_init ? '+' : '-',
-		 vgdev->has_allow_p2p ? '+' : '-',
-		 vgdev->has_flip_sequence ? '+' : '-');
+	DRM_INFO("features: %ccontext_init\n",
+		 vgdev->has_context_init ? '+' : '-');
 
 	/* get display info */
 	virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
