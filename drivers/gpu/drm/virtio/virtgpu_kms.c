@@ -116,58 +116,21 @@ static void virtio_gpu_get_capsets(struct virtio_gpu_device *vgdev,
 
 int virtio_gpu_find_vqs(struct virtio_gpu_device *vgdev)
 {
-        struct virtqueue_info *vqs_info;
-        vq_callback_t **callbacks;
-        struct virtqueue **vqs;
-        int i, total_vqs, err;
-        const char **names;
-        int ret = 0;
+	struct virtqueue_info vqs_info[] = {
+		{ "control", virtio_gpu_ctrl_ack },
+		{ "cursor", virtio_gpu_cursor_ack },
+	};
+	struct virtqueue *vqs[2];
+	int ret;
 
-        total_vqs = vgdev->num_vblankq + 2;
-        vqs = kcalloc(total_vqs, sizeof(*vqs), GFP_KERNEL);
-        callbacks = kmalloc_array(total_vqs, sizeof(vq_callback_t *),
-                                  GFP_KERNEL);
-        names = kmalloc_array(total_vqs, sizeof(char *), GFP_KERNEL);
-        vqs_info = kmalloc_array(total_vqs, sizeof(struct virtqueue_info *),
-                                GFP_KERNEL);
+	ret = virtio_find_vqs(vgdev->vdev, 2, vqs, vqs_info, NULL);
+	if (ret)
+		return ret;
 
-        if (!callbacks || !vqs || !names || !vqs_info) {
-                err = -ENOMEM;
-                goto out;
-        }
+	vgdev->ctrlq.vq = vqs[0];
+	vgdev->cursorq.vq = vqs[1];
 
-        callbacks[0] = virtio_gpu_ctrl_ack;
-        callbacks[1] = virtio_gpu_cursor_ack;
-        names[0] = "control";
-        names[1] = "cursor";
-        for (i = 2; i < total_vqs; i++) {
-                callbacks[i] = virtio_gpu_vblank_ack;
-                names[i] = "vblank";
-        }
-
-        for (i = 0; i < total_vqs; i++) {
-                vqs_info[i].callback = callbacks[i];
-                vqs_info[i].name = names[i];
-        }
-
-        ret = virtio_find_vqs(vgdev->vdev, total_vqs, vqs, vqs_info, NULL);
-        if (ret)
-                goto out;
-
-        vgdev->ctrlq.vq = vqs[0];
-        vgdev->cursorq.vq = vqs[1];
-
-        for (i = 2; i < total_vqs; i++)
-                vgdev->vblank[i-2].vblank.vq = vqs[i];
-
-        ret = 0;
-out:
-        kfree(names);
-
-        kfree(callbacks);
-        kfree(vqs);
-        kfree(vqs_info);
-        return ret;
+	return 0;
 }
 
 int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
@@ -225,9 +188,6 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_SCALING)) {
 		vgdev->has_scaling = true;
 	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_VBLANK)) {
-		vgdev->has_vblank = true;
-	}
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_RESOURCE_BLOB)) {
 		vgdev->has_resource_blob = true;
 		if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MODIFIER)) {
@@ -265,14 +225,6 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 
 	DRM_INFO("features: %ccontext_init\n",
 		 vgdev->has_context_init ? '+' : '-');
-
-	vgdev->num_vblankq = 0;
-	if(vgdev->has_vblank)
-		virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
-				num_pipe, &vgdev->num_vblankq);
-
-	for(i=0; i<vgdev->num_vblankq; i++)
-		spin_lock_init(&vgdev->vblank[i].vblank.qlock);
 
 	ret = virtio_gpu_find_vqs(vgdev);
 	if (ret) {
