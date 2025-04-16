@@ -151,7 +151,6 @@ struct drm_gem_object *virtgpu_gem_prime_import(struct drm_device *dev,
 	struct device *attach_dev = dev->dev;
 	struct virtio_gpu_device *vgdev = dev->dev_private;
 	int ret;
-	bool p2p = false;
 
 	if (dma_buf->ops == &virtgpu_dmabuf_ops.ops) {
 		obj = dma_buf->priv;
@@ -171,13 +170,6 @@ struct drm_gem_object *virtgpu_gem_prime_import(struct drm_device *dev,
 
 	if (!dev->driver->gem_prime_import_sg_table)
 		return ERR_PTR(-EINVAL);
-
-	spin_lock(&dma_buf->name_lock);
-	if(vgdev->has_allow_p2p && dma_buf->name) {
-		if(strcmp(dma_buf->name, "p2p") == 0)
-			p2p = true;
-	}
-	spin_unlock(&dma_buf->name_lock);
 
 	attach = ____dma_buf_dynamic_attach(dma_buf, attach_dev, NULL, NULL,
 						p2p);
@@ -298,10 +290,6 @@ struct drm_gem_object *virtgpu_gem_prime_import_sg_table(
 
 	bo->guest_blob = true;
 	bo->prime = true;
-
-	if (attach->peer2peer)
-		bo->locate = 1;
-
 	params.blob_mem = VIRTGPU_BLOB_MEM_GUEST;
 	params.blob_flags = VIRTGPU_BLOB_FLAG_USE_SHAREABLE;
 	params.blob = true;

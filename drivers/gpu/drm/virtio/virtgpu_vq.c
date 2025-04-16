@@ -1533,8 +1533,8 @@ void virtio_gpu_cmd_unmap(struct virtio_gpu_device *vgdev,
 	virtio_gpu_queue_ctrl_buffer(vgdev, vbuf);
 }
 
-static void
-virtio_gpu_cmd_resource_create_blob_internal(struct virtio_gpu_device *vgdev,
+void
+virtio_gpu_cmd_resource_create_blob(struct virtio_gpu_device *vgdev,
 				    struct virtio_gpu_object *bo,
 				    struct virtio_gpu_object_params *params,
 				    struct virtio_gpu_mem_entry *ents,
@@ -1560,18 +1560,6 @@ virtio_gpu_cmd_resource_create_blob_internal(struct virtio_gpu_device *vgdev,
 
 	virtio_gpu_queue_ctrl_buffer(vgdev, vbuf);
 	bo->created = true;
-}
-
-void
-virtio_gpu_cmd_resource_create_blob(struct virtio_gpu_device *vgdev,
-				    struct virtio_gpu_object *bo,
-				    struct virtio_gpu_object_params *params,
-				    struct virtio_gpu_mem_entry *ents,
-				    uint32_t nents)
-{
-	if(bo->locate && vgdev->has_allow_p2p)
-		params->blob_flags |= VIRTGPU_BLOB_FLAG_USE_DEVICE_MEM;
-	virtio_gpu_cmd_resource_create_blob_internal(vgdev, bo, params, ents, nents);
 }
 
 void virtio_gpu_cmd_set_scanout_blob(struct virtio_gpu_device *vgdev,
