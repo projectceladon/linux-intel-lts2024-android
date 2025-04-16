@@ -54,14 +54,14 @@ int virtio_gpu_resource_id_get(struct virtio_gpu_device *vgdev, uint32_t *resid)
 	return 0;
 }
 
-void virtio_gpu_resource_id_put(struct virtio_gpu_device *vgdev, uint32_t id)
+static void virtio_gpu_resource_id_put(struct virtio_gpu_device *vgdev, uint32_t id)
 {
 	if (!virtio_gpu_virglrenderer_workaround) {
 		ida_free(&vgdev->resource_ida, id - 1);
 	}
 }
 
-void virtio_gpu_object_save_restore_list(struct virtio_gpu_device *vgdev,
+static void virtio_gpu_object_save_restore_list(struct virtio_gpu_device *vgdev,
 						struct virtio_gpu_object *bo,
 						struct virtio_gpu_object_params *params)
 {
