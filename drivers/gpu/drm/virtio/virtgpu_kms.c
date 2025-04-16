@@ -140,7 +140,7 @@ int virtio_gpu_find_vqs(struct virtio_gpu_device *vgdev)
         callbacks = kmalloc_array(total_vqs, sizeof(vq_callback_t *),
                                   GFP_KERNEL);
         names = kmalloc_array(total_vqs, sizeof(char *), GFP_KERNEL);
-        vqs_info = kmalloc_array(total_vqs, sizeof(struct virtqueue_info),
+        vqs_info = kmalloc_array(total_vqs, sizeof(struct virtqueue_info *),
                                 GFP_KERNEL);
 
         if (!callbacks || !vqs || !names || !vqs_info) {
