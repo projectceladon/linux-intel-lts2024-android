@@ -90,7 +90,6 @@ struct virtio_gpu_object {
 	struct drm_gem_shmem_object base;
 	uint32_t hw_res_handle;
 	bool dumb;
-	bool prime;
 	bool created;
 	bool attached;
 	bool host3d_blob, guest_blob;
@@ -98,9 +97,6 @@ struct virtio_gpu_object {
 
 	int uuid_state;
 	uuid_t uuid;
-	/* Address cache for prime object */
-	struct virtio_gpu_mem_entry *ents;
-	uint32_t nents;
 };
 #define gem_to_virtio_gpu_obj(gobj) \
 	container_of((gobj), struct virtio_gpu_object, base.base)
