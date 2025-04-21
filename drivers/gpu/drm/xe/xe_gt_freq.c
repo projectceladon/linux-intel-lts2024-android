@@ -56,9 +56,10 @@ dev_to_xe(struct device *dev)
 	return gt_to_xe(kobj_to_gt(dev->kobj.parent));
 }
 
-static ssize_t act_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t act_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 
@@ -68,11 +69,12 @@ static ssize_t act_freq_show(struct device *dev,
 
 	return sysfs_emit(buf, "%d\n", freq);
 }
-static DEVICE_ATTR_RO(act_freq);
+static struct kobj_attribute act_freq_attr = __ATTR_RO(act_freq);
 
-static ssize_t cur_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t cur_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 	ssize_t ret;
@@ -85,11 +87,12 @@ static ssize_t cur_freq_show(struct device *dev,
 
 	return sysfs_emit(buf, "%d\n", freq);
 }
-static DEVICE_ATTR_RO(cur_freq);
+static struct kobj_attribute cur_freq_attr = __ATTR_RO(cur_freq);
 
-static ssize_t rp0_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t rp0_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 
@@ -99,11 +102,12 @@ static ssize_t rp0_freq_show(struct device *dev,
 
 	return sysfs_emit(buf, "%d\n", freq);
 }
-static DEVICE_ATTR_RO(rp0_freq);
+static struct kobj_attribute rp0_freq_attr = __ATTR_RO(rp0_freq);
 
-static ssize_t rpe_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t rpe_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 
@@ -113,20 +117,22 @@ static ssize_t rpe_freq_show(struct device *dev,
 
 	return sysfs_emit(buf, "%d\n", freq);
 }
-static DEVICE_ATTR_RO(rpe_freq);
+static struct kobj_attribute rpe_freq_attr = __ATTR_RO(rpe_freq);
 
-static ssize_t rpn_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t rpn_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 
 	return sysfs_emit(buf, "%d\n", xe_guc_pc_get_rpn_freq(pc));
 }
-static DEVICE_ATTR_RO(rpn_freq);
+static struct kobj_attribute rpn_freq_attr = __ATTR_RO(rpn_freq);
 
-static ssize_t min_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t min_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 	ssize_t ret;
@@ -140,9 +146,10 @@ static ssize_t min_freq_show(struct device *dev,
 	return sysfs_emit(buf, "%d\n", freq);
 }
 
-static ssize_t min_freq_store(struct device *dev, struct device_attribute *attr,
-			      const char *buff, size_t count)
+static ssize_t min_freq_store(struct kobject *kobj,
+			      struct kobj_attribute *attr, const char *buff, size_t count)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 	ssize_t ret;
@@ -159,11 +166,12 @@ static ssize_t min_freq_store(struct device *dev, struct device_attribute *attr,
 
 	return count;
 }
-static DEVICE_ATTR_RW(min_freq);
+static struct kobj_attribute min_freq_attr = __ATTR_RW(min_freq);
 
-static ssize_t max_freq_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
+static ssize_t max_freq_show(struct kobject *kobj,
+			     struct kobj_attribute *attr, char *buf)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 	ssize_t ret;
@@ -177,9 +185,10 @@ static ssize_t max_freq_show(struct device *dev,
 	return sysfs_emit(buf, "%d\n", freq);
 }
 
-static ssize_t max_freq_store(struct device *dev, struct device_attribute *attr,
-			      const char *buff, size_t count)
+static ssize_t max_freq_store(struct kobject *kobj,
+			      struct kobj_attribute *attr, const char *buff, size_t count)
 {
+	struct device *dev = kobj_to_dev(kobj);
 	struct xe_guc_pc *pc = dev_to_pc(dev);
 	u32 freq;
 	ssize_t ret;
@@ -196,16 +205,16 @@ static ssize_t max_freq_store(struct device *dev, struct device_attribute *attr,
 
 	return count;
 }
-static DEVICE_ATTR_RW(max_freq);
+static struct kobj_attribute max_freq_attr = __ATTR_RW(max_freq);
 
 static const struct attribute *freq_attrs[] = {
-	&dev_attr_act_freq.attr,
-	&dev_attr_cur_freq.attr,
-	&dev_attr_rp0_freq.attr,
-	&dev_attr_rpe_freq.attr,
-	&dev_attr_rpn_freq.attr,
-	&dev_attr_min_freq.attr,
-	&dev_attr_max_freq.attr,
+	&act_freq_attr.attr,
+	&cur_freq_attr.attr,
+	&rp0_freq_attr.attr,
+	&rpe_freq_attr.attr,
+	&rpn_freq_attr.attr,
+	&min_freq_attr.attr,
+	&max_freq_attr.attr,
 	NULL
 };
 
