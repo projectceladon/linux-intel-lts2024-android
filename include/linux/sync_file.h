@@ -51,6 +51,7 @@ struct sync_file {
 
 	struct dma_fence	*fence;
 	struct dma_fence_cb cb;
+	int type;
 };
 
 #define POLL_ENABLED 0
