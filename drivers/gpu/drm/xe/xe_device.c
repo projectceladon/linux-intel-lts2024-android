@@ -8,6 +8,7 @@
 #include <linux/aperture.h>
 #include <linux/delay.h>
 #include <linux/fault-inject.h>
+#include <linux/jiffies.h>
 #include <linux/units.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -65,9 +66,13 @@ static int xe_file_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct xe_device *xe = to_xe_device(dev);
 	struct xe_drm_client *client;
+	struct xe_user *user;
 	struct xe_file *xef;
 	int ret = -ENOMEM;
+	unsigned long flags;
+	unsigned int uid = 0;
 	struct task_struct *task = NULL;
+	const struct cred *cred = NULL;
 
 	xef = kzalloc(sizeof(*xef), GFP_KERNEL);
 	if (!xef)
@@ -94,11 +99,52 @@ static int xe_file_open(struct drm_device *dev, struct drm_file *file)
 
 	task = get_pid_task(rcu_access_pointer(file->pid), PIDTYPE_PID);
 	if (task) {
+		cred = get_task_cred(task);
+		if (cred) {
+			uid = cred->euid.val;
+			put_cred(cred);
+		}
 		xef->process_name = kstrdup(task->comm, GFP_KERNEL);
 		xef->pid = task->pid;
 		put_task_struct(task);
 	}
 
+	/*
+	 * Check if the calling process/uid has already been registered
+	 * by the xe driver during a previous file open call. If so then
+	 * take a reference to this xe file and add it to the list of xe
+	 * files belonging to the this process' xe user
+	 */
+	spin_lock_irqsave(&xe->work_period.lock, flags);
+	list_for_each_entry(user, &xe->work_period.user_list, entry) {
+		if (user->uid == uid) {
+			xef->user = xe_user_get(user);
+			goto filelist_add;
+		}
+	}
+	/* list_add could be ordered wrt to list_for_each_entry */
+	smp_mb();
+
+	/*
+	 * We couldn't find a xe user for this process. allocate a new
+	 * xe user structure and register it to the xe driver
+	 */
+	user = xe_user_alloc(uid);
+	if (!user) {
+		goto spin_unlk;
+	}
+
+	user->last_timestamp_ns = ktime_get_raw_ns();
+	list_add(&user->entry, &xe->work_period.user_list);
+	xef->user = user;
+
+filelist_add:
+	spin_lock(&user->filelist_lock);
+	list_add(&xef->user_link, &user->filelist);
+	spin_unlock(&user->filelist_lock);
+	user->xe = xe;
+spin_unlk:
+	spin_unlock_irqrestore(&xe->work_period.lock, flags);
 	return 0;
 }
 
@@ -113,6 +159,9 @@ static void xe_file_destroy(struct kref *ref)
 
 	xe_drm_client_put(xef->client);
 	kfree(xef->process_name);
+
+	list_del(&xef->user_link);
+	xe_user_put(xef->user);
 	kfree(xef);
 }
 
@@ -231,6 +280,24 @@ static long xe_drm_compat_ioctl(struct file *file, unsigned int cmd, unsigned lo
 #define xe_drm_compat_ioctl NULL
 #endif
 
+static void work_period_timer_fn(struct timer_list *timer)
+{
+	struct xe_device *xe = container_of(timer, typeof(*xe), work_period.timer);
+	struct xe_user *user;
+	unsigned long timeout = 0;
+
+	spin_lock(&xe->work_period.lock);
+	if (!list_empty(&xe->work_period.user_list)) {
+		list_for_each_entry(user, &xe->work_period.user_list, entry) {
+			queue_work(xe->work_period.wq, &user->work);
+		}
+	}
+	spin_unlock(&xe->work_period.lock);
+	timeout = jiffies + msecs_to_jiffies(500);
+
+	mod_timer(timer, timeout);
+}
+
 static const struct file_operations xe_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
@@ -291,6 +358,11 @@ static void xe_device_destroy(struct drm_device *dev, void *dummy)
 	if (xe->destroy_wq)
 		destroy_workqueue(xe->destroy_wq);
 
+	if (xe->work_period.wq)
+		destroy_workqueue(xe->work_period.wq);
+
+	del_timer(&xe->work_period.timer);
+
 	ttm_device_fini(&xe->ttm);
 }
 
@@ -350,13 +422,22 @@ struct xe_device *xe_device_create(struct pci_dev *pdev,
 	INIT_LIST_HEAD(&xe->pinned.external_vram);
 	INIT_LIST_HEAD(&xe->pinned.evicted);
 
+	spin_lock_init(&xe->work_period.lock);
+	INIT_LIST_HEAD(&xe->work_period.user_list);
+	timer_setup(&xe->work_period.timer, work_period_timer_fn, 0);
+	xe->work_period.timer.expires = jiffies + msecs_to_jiffies(1000);
+	add_timer(&xe->work_period.timer);
+
+	xe->work_period.wq = alloc_workqueue("xe-work-period-wq", 0, 0);
+
 	xe->preempt_fence_wq = alloc_ordered_workqueue("xe-preempt-fence-wq",
 						       WQ_MEM_RECLAIM);
 	xe->ordered_wq = alloc_ordered_workqueue("xe-ordered-wq", 0);
 	xe->unordered_wq = alloc_workqueue("xe-unordered-wq", 0, 0);
 	xe->destroy_wq = alloc_workqueue("xe-destroy-wq", 0, 0);
 	if (!xe->ordered_wq || !xe->unordered_wq ||
-	    !xe->preempt_fence_wq || !xe->destroy_wq) {
+		!xe->preempt_fence_wq || !xe->destroy_wq ||
+		!xe->work_period.wq) {
 		/*
 		 * Cleanup done in xe_device_destroy via
 		 * drmm_add_action_or_reset register above
