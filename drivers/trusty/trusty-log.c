@@ -17,6 +17,7 @@
 #include <linux/panic_notifier.h>
 #include <linux/poll.h>
 #include <linux/seq_file.h>
+#include <linux/vmalloc.h>
 #include <asm/page.h>
 #include "trusty-log.h"
 
