@@ -22,6 +22,9 @@ struct xe_modparam xe_modparam = {
 	.guc_log_level = 5,
 	.force_probe = CONFIG_DRM_XE_FORCE_PROBE,
 	.wedged_mode = 1,
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+	.gpufreq_monitoring_interval_ms = 5000,
+#endif
 	/* the rest are 0 by default */
 };
 
@@ -64,6 +67,13 @@ module_param_named_unsafe(wedged_mode, xe_modparam.wedged_mode, int, 0600);
 MODULE_PARM_DESC(wedged_mode,
 		 "Module's default policy for the wedged mode - 0=never, 1=upon-critical-errors[default], 2=upon-any-hang");
 
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+module_param_named(gpufreq_monitoring_interval_ms,
+		   xe_modparam.gpufreq_monitoring_interval_ms, uint, 0644);
+MODULE_PARM_DESC(gpufreq_monitoring_interval_ms,
+		 "GPU frequency monitoring interval in milliseconds (100-10000, default: 5000)");
+#endif
+
 static int xe_check_nomodeset(void)
 {
 	if (drm_firmware_drivers_only())
@@ -71,6 +81,24 @@ static int xe_check_nomodeset(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+static int xe_validate_module_params(void)
+{
+	/* Validate GPU frequency monitoring interval */
+	if (xe_modparam.gpufreq_monitoring_interval_ms < 100 ||
+	    xe_modparam.gpufreq_monitoring_interval_ms > 10000) {
+		pr_warn("xe: gpufreq_monitoring_interval_ms %u out of range [100, 10000], using default 5000ms\n",
+			xe_modparam.gpufreq_monitoring_interval_ms);
+		xe_modparam.gpufreq_monitoring_interval_ms = 5000;
+	}
+
+	pr_info("xe: GPU frequency monitoring interval: %u ms\n",
+		xe_modparam.gpufreq_monitoring_interval_ms);
+
+	return 0;
+}
+#endif
 
 struct init_funcs {
 	int (*init)(void);
@@ -85,6 +113,11 @@ static const struct init_funcs init_funcs[] = {
 	{
 		.init = xe_check_nomodeset,
 	},
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+	{
+		.init = xe_validate_module_params,
+	},
+#endif
 	{
 		.init = xe_hw_fence_module_init,
 		.exit = xe_hw_fence_module_exit,
