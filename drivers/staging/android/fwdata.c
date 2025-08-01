@@ -377,10 +377,9 @@ out:
 	return ret;
 }
 
-static int android_fwdata_remove(struct platform_device *pdev)
+static void android_fwdata_remove(struct platform_device *pdev)
 {
 	clean_up();
-	return 0;
 }
 
 static const struct acpi_device_id android_fwdata_acpi_match[] = {
