@@ -31,6 +31,7 @@
 #include "xe_exec_queue.h"
 #include "xe_force_wake.h"
 #include "xe_ggtt.h"
+#include "xe_gpufreqtracer/xe_gpufreqtracer.h"
 #include "xe_gsc_proxy.h"
 #include "xe_gt.h"
 #include "xe_gt_mcr.h"
@@ -727,6 +728,21 @@ int xe_device_probe(struct xe_device *xe)
 
 	xe_heci_gsc_init(xe);
 
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+	err = xe_gpufreqtracer_init(xe);
+	if (err)
+		goto err_fini_gt;
+
+	/* Start periodic monitoring on all GTs using global module parameter */
+	for_each_gt(gt, xe, id) {
+		err = xe_gpufreqtracer_start_monitoring(gt);
+		if (err) {
+			drm_err(&xe->drm, "xe_gpufreqtracer: failed to start monitoring for GT%u, err=%d\n",
+				gt->info.id, err);
+		}
+	}
+#endif
+
 	err = xe_oa_init(xe);
 	if (err)
 		goto err_fini_gt;
@@ -787,6 +803,10 @@ void xe_device_remove(struct xe_device *xe)
 	xe_oa_unregister(xe);
 
 	xe_device_remove_display(xe);
+
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+	xe_gpufreqtracer_fini(xe);
+#endif
 
 	xe_display_fini(xe);
 

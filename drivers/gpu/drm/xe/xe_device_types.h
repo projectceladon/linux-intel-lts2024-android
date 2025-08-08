@@ -33,6 +33,7 @@
 #endif
 
 struct xe_ggtt;
+struct xe_gpufreqtracer_data;
 struct xe_pat_ops;
 
 #define XE_BO_INVALID_OFFSET	LONG_MAX
@@ -495,6 +496,11 @@ struct xe_device {
 
 	/** @oa: oa observation subsystem */
 	struct xe_oa oa;
+
+#ifdef CONFIG_DRM_XE_GPUFREQTRACER
+	/** @gpufreqtracer_data: GPU frequency tracer data */
+	struct xe_gpufreqtracer_data *gpufreqtracer_data;
+#endif
 
 	/** @needs_flr_on_fini: requests function-reset on fini */
 	bool needs_flr_on_fini;
