@@ -76,7 +76,7 @@ int trusty_reclaim_memory(struct device *dev, trusty_shared_mem_id_t id,
 			  struct scatterlist *sglist, unsigned int nents);
 
 struct dma_buf;
-#ifdef CONFIG_TRUSTY_DMA_BUF_FFA_TAG
+#if defined(CONFIG_TRUSTY_DMA_BUF_FFA_TAG) && !defined(CONFIG_X86_64)
 u64 trusty_dma_buf_get_ffa_tag(struct dma_buf *dma_buf);
 #else
 static inline u64 trusty_dma_buf_get_ffa_tag(struct dma_buf *dma_buf)
@@ -86,7 +86,7 @@ static inline u64 trusty_dma_buf_get_ffa_tag(struct dma_buf *dma_buf)
 #endif
 
 /* Invalid handle value is defined by FF-A spec */
-#ifdef CONFIG_TRUSTY_DMA_BUF_SHARED_MEM_ID
+#if defined(CONFIG_TRUSTY_DMA_BUF_SHARED_MEM_ID) && !defined(CONFIG_X86_64)
 /**
  * trusty_dma_buf_get_shared_mem_id() - Get memory ID corresponding to a dma_buf
  * @dma_buf: DMA buffer
