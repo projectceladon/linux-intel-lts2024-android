@@ -12,6 +12,9 @@
 extern "C" {
 #endif
 
+#define DRM_IVPU_DRIVER_MAJOR 1
+#define DRM_IVPU_DRIVER_MINOR 0
+
 #define DRM_IVPU_GET_PARAM		  0x00
 #define DRM_IVPU_SET_PARAM		  0x01
 #define DRM_IVPU_BO_CREATE		  0x02
@@ -258,7 +261,7 @@ struct drm_ivpu_bo_info {
 
 /* drm_ivpu_submit engines */
 #define DRM_IVPU_ENGINE_COMPUTE 0
-#define DRM_IVPU_ENGINE_COPY    1 /* Deprecated */
+#define DRM_IVPU_ENGINE_COPY    1
 
 /**
  * struct drm_ivpu_submit - Submit commands to the VPU
@@ -289,6 +292,10 @@ struct drm_ivpu_submit {
 	 * %DRM_IVPU_ENGINE_COMPUTE:
 	 *
 	 * Performs Deep Learning Neural Compute Inference Operations
+	 *
+	 * %DRM_IVPU_ENGINE_COPY:
+	 *
+	 * Performs memory copy operations to/from system memory allocated for VPU
 	 */
 	__u32 engine;
 
