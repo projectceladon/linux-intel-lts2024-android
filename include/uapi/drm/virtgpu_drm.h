@@ -98,8 +98,6 @@ struct drm_virtgpu_execbuffer {
 #define VIRTGPU_PARAM_CONTEXT_INIT 6 /* DRM_VIRTGPU_CONTEXT_INIT */
 #define VIRTGPU_PARAM_SUPPORTED_CAPSET_IDs 7 /* Bitmask of supported capability set ids */
 #define VIRTGPU_PARAM_EXPLICIT_DEBUG_NAME 8 /* Ability to set debug name from userspace */
-#define VIRTGPU_PARAM_QUERY_DEV 11 /* Query the virtio device name. */
-#define VIRTGPU_PARAM_ALLOW_P2P 12 /* do we accept local memory addresses */
 
 struct drm_virtgpu_getparam {
 	__u64 param;
@@ -181,7 +179,6 @@ struct drm_virtgpu_resource_create_blob {
 #define VIRTGPU_BLOB_FLAG_USE_MAPPABLE     0x0001
 #define VIRTGPU_BLOB_FLAG_USE_SHAREABLE    0x0002
 #define VIRTGPU_BLOB_FLAG_USE_CROSS_DEVICE 0x0004
-#define VIRTGPU_BLOB_FLAG_USE_DEVICE_MEM   0x0008
 	/* zero is invalid blob_mem */
 	__u32 blob_mem;
 	__u32 blob_flags;

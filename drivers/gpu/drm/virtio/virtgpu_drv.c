@@ -46,8 +46,6 @@ static const struct drm_driver driver;
 
 static int virtio_gpu_modeset = -1;
 
-MODULE_IMPORT_NS(DMA_BUF);
-
 MODULE_PARM_DESC(modeset, "Disable/Enable modesetting");
 module_param_named(modeset, virtio_gpu_modeset, int, 0400);
 
@@ -167,12 +165,6 @@ static unsigned int features[] = {
 	VIRTIO_GPU_F_MODIFIER,
 	VIRTIO_GPU_F_SCALING,
 	VIRTIO_GPU_F_VBLANK,
-	VIRTIO_GPU_F_ALLOW_P2P,
-	VIRTIO_GPU_F_FLIP_SEQUENCE,
-	VIRTIO_GPU_F_MULTI_PLANE,
-	VIRTIO_GPU_F_ROTATION,
-	VIRTIO_GPU_F_PIXEL_BLEND_MODE,
-	VIRTIO_GPU_F_MULTI_PLANAR_FORMAT,
 };
 
 #ifdef CONFIG_PM_SLEEP

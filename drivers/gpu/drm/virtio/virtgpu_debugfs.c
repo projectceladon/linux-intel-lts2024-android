@@ -55,14 +55,6 @@ static int virtio_gpu_features(struct seq_file *m, void *data)
 
 	virtio_gpu_add_bool(m, "blob resources", vgdev->has_resource_blob);
 	virtio_gpu_add_bool(m, "context init", vgdev->has_context_init);
-	virtio_gpu_add_bool(m, "scaling", vgdev->has_scaling);
-	virtio_gpu_add_bool(m, "allow_p2p", vgdev->has_allow_p2p);
-	virtio_gpu_add_bool(m, "flip_sequence", vgdev->has_flip_sequence);
-	virtio_gpu_add_bool(m, "multi_plane", vgdev->has_multi_plane);
-	virtio_gpu_add_bool(m, "rotation", vgdev->has_rotation);
-	virtio_gpu_add_bool(m, "pixel_blend_mode", vgdev->has_pixel_blend_mode);
-	virtio_gpu_add_bool(m, "multi_planar", vgdev->has_multi_planar);
-	virtio_gpu_add_bool(m, "modifier", vgdev->has_modifier);
 	virtio_gpu_add_int(m, "cap sets", vgdev->num_capsets);
 	virtio_gpu_add_int(m, "scanouts", vgdev->num_scanouts);
 	if (vgdev->host_visible_region.len) {
@@ -102,30 +94,10 @@ virtio_gpu_debugfs_host_visible_mm(struct seq_file *m, void *data)
 	return 0;
 }
 
-static int
-virtio_gpu_debugfs_objects(struct seq_file *m, void *data)
-{
-	struct drm_info_node *node = (struct drm_info_node *)m->private;
-	struct virtio_gpu_device *vgdev = node->minor->dev->dev_private;
-	struct virtio_gpu_object_restore *curr, *tmp;
-
-	list_for_each_entry_safe(curr, tmp, &vgdev->obj_rec, node) {
-		seq_printf(m, "hw_res_handle=%u, prime=%d\n",
-			   curr->bo->hw_res_handle, curr->bo->prime);
-		if (curr->bo->prime)
-			for (unsigned i = 0; i < curr->bo->nents; ++i)
-				seq_printf(m, "\taddr=%lx, size=%x\n",
-					   curr->bo->ents[i].addr,
-					   curr->bo->ents[i].length);
-	}
-	return 0;
-}
-
 static struct drm_info_list virtio_gpu_debugfs_list[] = {
 	{ "virtio-gpu-features", virtio_gpu_features },
 	{ "virtio-gpu-irq-fence", virtio_gpu_debugfs_irq_info, 0, NULL },
 	{ "virtio-gpu-host-visible-mm", virtio_gpu_debugfs_host_visible_mm },
-	{ "virtio-gpu-objects", virtio_gpu_debugfs_objects },
 };
 
 #define VIRTIO_GPU_DEBUGFS_ENTRIES ARRAY_SIZE(virtio_gpu_debugfs_list)

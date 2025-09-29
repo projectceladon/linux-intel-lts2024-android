@@ -114,18 +114,6 @@ static void virtio_gpu_get_capsets(struct virtio_gpu_device *vgdev,
 	vgdev->num_capsets = num_capsets;
 }
 
-static void virtio_gpu_get_planes(struct virtio_gpu_device *vgdev)
-{
-        int i;
-        for(i=0; i < vgdev->num_scanouts; i++) {
-                vgdev->outputs[i].plane_num = 0;
-                virtio_gpu_cmd_get_planes_info(vgdev, i);
-                virtio_gpu_notify(vgdev);
-                wait_event_timeout(vgdev->resp_wq,
-                                vgdev->outputs[i].plane_num, 5 * HZ);
-        }
-}
-
 int virtio_gpu_find_vqs(struct virtio_gpu_device *vgdev)
 {
         struct virtqueue_info *vqs_info;
@@ -241,24 +229,6 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_VBLANK)) {
 		vgdev->has_vblank = true;
 	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_ALLOW_P2P)) {
-		vgdev->has_allow_p2p = true;
-	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_FLIP_SEQUENCE)) {
-		vgdev->has_flip_sequence = true;
-	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MULTI_PLANE)) {
-		vgdev->has_multi_plane = true;
-	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_ROTATION)) {
-		vgdev->has_rotation = true;
-	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_PIXEL_BLEND_MODE)) {
-		vgdev->has_pixel_blend_mode = true;
-	}
-	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MULTI_PLANAR_FORMAT)) {
-		vgdev->has_multi_planar = true;
-	}
 	if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_RESOURCE_BLOB)) {
 		vgdev->has_resource_blob = true;
 		if (virtio_has_feature(vgdev->vdev, VIRTIO_GPU_F_MODIFIER)) {
@@ -294,16 +264,27 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 		 vgdev->has_resource_blob ? '+' : '-',
 		 vgdev->has_host_visible ? '+' : '-');
 
-	DRM_INFO("features: %cscaling %cvblank %cmodifier %cmulti_plane",
-		 vgdev->has_scaling ? '+' : '-',
-		 vgdev->has_vblank ? '+' : '-',
-		 vgdev->has_modifier ? '+' : '-',
-		 vgdev->has_multi_plane ? '+' : '-');
+	DRM_INFO("features: %ccontext_init\n",
+		 vgdev->has_context_init ? '+' : '-');
 
-	DRM_INFO("features: %ccontext_init %callow_p2p %cflip_sequence\n",
-		 vgdev->has_context_init ? '+' : '-',
-		 vgdev->has_allow_p2p ? '+' : '-',
-		 vgdev->has_flip_sequence ? '+' : '-');
+	vgdev->num_vblankq = 0;
+	if(vgdev->has_vblank)
+		virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
+				num_pipe, &vgdev->num_vblankq);
+
+	for(i=0; i<vgdev->num_vblankq; i++)
+		spin_lock_init(&vgdev->vblank[i].vblank.qlock);
+
+	ret = virtio_gpu_find_vqs(vgdev);
+	if (ret) {
+		DRM_ERROR("failed to find virt queues\n");
+		goto err_vqs;
+	}
+	ret = virtio_gpu_alloc_vbufs(vgdev);
+	if (ret) {
+		DRM_ERROR("failed to alloc vbufs\n");
+		goto err_vbufs;
+	}
 
 	/* get display info */
 	virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
@@ -324,48 +305,16 @@ int virtio_gpu_init(struct virtio_device *vdev, struct drm_device *dev)
 			num_capsets, &num_capsets);
 	DRM_INFO("number of cap sets: %d\n", num_capsets);
 
-	vgdev->num_vblankq = 0;
-	if(vgdev->has_vblank)
-		virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
-                               num_pipe, &vgdev->num_vblankq);
-	if (vgdev->num_vblankq > vgdev->num_scanouts) {
-		DRM_WARN("virtio gpu has wrong vblank number\n");
-		vgdev->num_vblankq = vgdev->num_scanouts;
-	}
-
-	for(i=0; i<vgdev->num_vblankq; i++)
-		spin_lock_init(&vgdev->vblank[i].vblank.qlock);
-
-	if (vgdev->has_allow_p2p) {
-		virtio_cread_le(vgdev->vdev, struct virtio_gpu_config,
-							   output_bitmask, &vgdev->output_cap_mask);
-		DRM_INFO("p2p crtc bitmask 0x%x \r\n", vgdev->output_cap_mask);
-	}
-
-	ret = virtio_gpu_find_vqs(vgdev);
+	ret = virtio_gpu_modeset_init(vgdev);
 	if (ret) {
-		DRM_ERROR("failed to find virt queues\n");
-		goto err_vqs;
-	}
-	ret = virtio_gpu_alloc_vbufs(vgdev);
-	if (ret) {
-		DRM_ERROR("failed to alloc vbufs\n");
-		goto err_vbufs;
+		DRM_ERROR("modeset init failed\n");
+		goto err_scanouts;
 	}
 
 	virtio_device_ready(vgdev->vdev);
 
 	if (num_capsets)
 		virtio_gpu_get_capsets(vgdev, num_capsets);
-
-	if(vgdev->has_multi_plane)
-		virtio_gpu_get_planes(vgdev);
-
-	ret = virtio_gpu_modeset_init(vgdev);
-	if (ret) {
-		DRM_ERROR("modeset init failed\n");
-		goto err_scanouts;
-	}
 
 	virtio_gpu_vblankq_notify(vgdev);
 
