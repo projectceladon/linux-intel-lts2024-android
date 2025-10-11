@@ -29,6 +29,7 @@
 #include "xe_platform_types.h"
 #include "xe_uc_fw.h"
 #include "xe_wa.h"
+#include "xe_gt_mcr.h"
 
 /* Slack of a few additional entries per engine */
 #define ADS_REGSET_EXTRA_MAX	8
@@ -242,8 +243,6 @@ static size_t calculate_regset_size(struct xe_gt *gt)
 	for_each_hw_engine(hwe, gt, id)
 		xa_for_each(&hwe->reg_sr.xa, sr_idx, sr_entry)
 			count++;
-
-	count += RING_MAX_NONPRIV_SLOTS * XE_NUM_HW_ENGINES;
 
 	count += ADS_REGSET_EXTRA_MAX * XE_NUM_HW_ENGINES;
 
@@ -698,6 +697,20 @@ static void guc_mmio_regset_write_one(struct xe_guc_ads *ads,
 		.flags = reg.masked ? GUC_REGSET_MASKED : 0,
 	};
 
+	if (reg.mcr) {
+		struct xe_reg_mcr mcr_reg = XE_REG_MCR(reg.addr);
+		u8 group, instance;
+
+		bool steer = xe_gt_mcr_get_nonterminated_steering(ads_to_gt(ads), mcr_reg,
+								  &group, &instance);
+
+		if (steer) {
+			entry.flags |= FIELD_PREP(GUC_REGSET_STEERING_GROUP, group);
+			entry.flags |= FIELD_PREP(GUC_REGSET_STEERING_INSTANCE, instance);
+			entry.flags |= GUC_REGSET_STEERING_NEEDED;
+		}
+	}
+
 	xe_map_memcpy_to(ads_to_xe(ads), regset_map, n_entry * sizeof(entry),
 			 &entry, sizeof(entry));
 }
@@ -728,11 +741,6 @@ static unsigned int guc_mmio_regset_write(struct xe_guc_ads *ads,
 
 	xa_for_each(&hwe->reg_sr.xa, idx, entry)
 		guc_mmio_regset_write_one(ads, regset_map, entry->reg, count++);
-
-	for (i = 0; i < RING_MAX_NONPRIV_SLOTS; i++)
-		guc_mmio_regset_write_one(ads, regset_map,
-					  RING_FORCE_TO_NONPRIV(hwe->mmio_base, i),
-					  count++);
 
 	for (e = extra_regs; e < extra_regs + ARRAY_SIZE(extra_regs); e++) {
 		if (e->skip)
