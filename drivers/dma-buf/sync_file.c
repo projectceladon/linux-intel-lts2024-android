@@ -65,12 +65,21 @@ static void fence_check_cb_func(struct dma_fence *f, struct dma_fence_cb *cb)
 struct sync_file *sync_file_create(struct dma_fence *fence)
 {
 	struct sync_file *sync_file;
+	const char *name = NULL;
 
 	sync_file = sync_file_alloc();
 	if (!sync_file)
 		return NULL;
 
 	sync_file->fence = dma_fence_get(fence);
+	if (sync_file->fence) {
+		sync_file->type = 0;
+		name = sync_file->fence->ops->get_driver_name(fence);
+		if (strcmp(name, "virtio_gpu") == 0)
+			sync_file->type = 1;
+		if (strcmp(name, "drm_sched") == 0)
+			sync_file->type = 2;
+	}
 
 	return sync_file;
 }
@@ -333,6 +342,7 @@ static long sync_file_ioctl_fence_info(struct sync_file *sync_file,
 	}
 
 no_fences:
+	printk(KERN_ERR "bosheng sync file name:%d\n", sync_file->type);
 	sync_file_get_name(sync_file, info.name, sizeof(info.name));
 	info.num_fences = num_fences;
 

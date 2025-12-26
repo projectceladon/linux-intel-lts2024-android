@@ -717,6 +717,7 @@ void drm_event_cancel_free(struct drm_device *dev,
 {
 	unsigned long flags;
 
+	printk(KERN_ERR "bosheng drm event cancel free\n");
 	spin_lock_irqsave(&dev->event_lock, flags);
 	if (p->file_priv) {
 		p->file_priv->event_space += p->event->length;

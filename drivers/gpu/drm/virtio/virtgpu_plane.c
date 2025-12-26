@@ -349,6 +349,7 @@ static void virtio_gpu_resource_flush(struct drm_plane *plane,
 	struct virtio_gpu_framebuffer *vgfb;
 	struct virtio_gpu_plane_state *vgplane_st;
 	struct virtio_gpu_object *bo;
+	int ret = 0;
 
 	vgfb = to_virtio_gpu_framebuffer(plane->state->fb);
 	vgplane_st = to_virtio_gpu_plane_state(plane->state);
@@ -365,8 +366,10 @@ static void virtio_gpu_resource_flush(struct drm_plane *plane,
 					      width, height, objs,
 					      vgplane_st->fence);
 		virtio_gpu_notify(vgdev);
-		dma_fence_wait_timeout(&vgplane_st->fence->f, true,
+		ret = dma_fence_wait_timeout(&vgplane_st->fence->f, true,
 				       msecs_to_jiffies(50));
+		if (ret <= 0)
+			printk("bosheng resource flush timeout ret:%d\n", ret);
 	} else {
 		virtio_gpu_cmd_resource_flush(vgdev, bo->hw_res_handle, x, y,
 					      width, height, NULL, NULL);
@@ -634,7 +637,7 @@ static int virtio_gpu_plane_prepare_fb(struct drm_plane *plane,
 	if (!bo || (plane->type == DRM_PLANE_TYPE_PRIMARY && !bo->guest_blob))
 		return 0;
 
-	if (bo->dumb) {
+	if (bo->dumb || vgfb->base.obj[0]->import_attach) {
 		vgplane_st->fence = virtio_gpu_fence_alloc(vgdev,
 						     vgdev->fence_drv.context,
 						     0);
