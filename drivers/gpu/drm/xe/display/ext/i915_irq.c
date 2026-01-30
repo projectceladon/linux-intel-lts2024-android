@@ -64,7 +64,7 @@ bool intel_irqs_enabled(struct xe_device *xe)
 	 * But at this point the xe irq is better protected against races,
 	 * although the full solution would be protecting the i915 side.
 	 */
-	return xe->irq.enabled;
+	return atomic_read(&xe->irq.enabled);
 }
 
 void intel_synchronize_irq(struct xe_device *xe)
